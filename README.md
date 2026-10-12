@@ -50,10 +50,14 @@ The keyboard works too:
 | Up / Down | Change the bet per line |
 | Left / Right | Change the number of lines |
 | M | Play all 25 lines at the highest bet the credits cover |
+| C | Insert a coin: 100 more credits |
+| R | Reset to a new game with 1000 credits |
 | S | Sound on or off |
 | Esc | Back to the menu |
 
-You start with 1000 credits. Each payline is a path across the five reels.
+You start with 1000 credits. The INSERT COIN button adds 100 more whenever
+you want them, and RESET starts a new game. Each payline is a path across
+the five reels.
 Three or more of a symbol in a row along a line, starting from the left
 reel, win; four or five in a row pay much more. Cherries also pay for two.
 A win on a line is multiplied by the bet per line, and the wins on all the

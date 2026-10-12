@@ -47,6 +47,7 @@ const (
 	Reels        = 5
 	Rows         = 3 // symbols showing on each reel
 	StartCredits = 1000
+	CoinCredits  = 100 // credits added by inserting a coin
 )
 
 // Short names keep the strips below readable.
@@ -383,4 +384,9 @@ func (m *Machine) Spin() (Result, bool) {
 	m.Credits += r.Win
 	m.FreeSpins += r.FreeSpinsWon
 	return r, true
+}
+
+// InsertCoin adds credits, so play can go on after they run out.
+func (m *Machine) InsertCoin() {
+	m.Credits += CoinCredits
 }

@@ -277,3 +277,16 @@ func TestSpinNeedsCredits(t *testing.T) {
 		t.Error("free spin refused with no credits")
 	}
 }
+
+func TestInsertCoin(t *testing.T) {
+	m := New(1, 2)
+	m.Credits = 0
+	m.InsertCoin()
+	m.InsertCoin()
+	if m.Credits != 2*CoinCredits {
+		t.Errorf("credits = %d after two coins, want %d", m.Credits, 2*CoinCredits)
+	}
+	if _, ok := m.Spin(); !ok {
+		t.Error("Spin refused after inserting coins")
+	}
+}

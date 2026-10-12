@@ -144,7 +144,18 @@ func lineButton(i int) button {
 	return button{reelsX + float64(i)*(reelW+reelGap), lineRowY, reelW, buttonH}
 }
 
-var spinButton = button{panelX, betRowY, panelW, lineRowY + buttonH - betRowY}
+// The spin button sits under the paytable beside the two rows, with the coin
+// and reset buttons below it.
+const (
+	coinH  = 24
+	resetW = 64
+)
+
+var (
+	spinButton  = button{panelX, betRowY, panelW, lineRowY + buttonH - betRowY - coinH - 4}
+	coinButton  = button{panelX, lineRowY + buttonH - coinH, panelW - resetW - 4, coinH}
+	resetButton = button{panelX + panelW - resetW, lineRowY + buttonH - coinH, resetW, coinH}
+)
 
 func (g *Game) Update() error {
 	g.ticks++
@@ -193,6 +204,9 @@ func (g *Game) updatePlay() {
 	}
 	click := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
 	x, y := ebiten.CursorPosition()
+	if pressed(ebiten.KeyC) || click && coinButton.hit(x, y) {
+		g.insertCoin()
+	}
 
 	// Free spins play themselves at the bet that won them, after a pause to
 	// show the last result. Pressing spin skips the pause.
@@ -228,6 +242,9 @@ func (g *Game) updatePlay() {
 		if spinButton.hit(x, y) {
 			g.spin()
 		}
+		if resetButton.hit(x, y) {
+			g.reset()
+		}
 	}
 
 	switch {
@@ -241,6 +258,8 @@ func (g *Game) updatePlay() {
 		g.setLines(step(machine.LineChoices, g.m.Lines, 1))
 	case pressed(ebiten.KeyArrowLeft):
 		g.setLines(step(machine.LineChoices, g.m.Lines, -1))
+	case pressed(ebiten.KeyR):
+		g.reset()
 	case pressed(ebiten.KeyM):
 		g.maxBet()
 	case pressed(ebiten.KeySpace, ebiten.KeyEnter, ebiten.KeyNumpadEnter):
@@ -281,17 +300,36 @@ func (g *Game) maxBet() {
 	g.m.BetPerLine = bet
 }
 
+const outOfCredits = "OUT OF CREDITS - INSERT A COIN OR START A NEW GAME"
+
+// reset starts a new game with the starting credits.
+func (g *Game) reset() {
+	g.newMachine()
+	g.snd.play(g.snd.click)
+}
+
+// insertCoin adds credits, so play can go on after they run out.
+func (g *Game) insertCoin() {
+	g.m.InsertCoin()
+	g.credits = g.m.Credits
+	g.message = fmt.Sprintf("COIN INSERTED - %d CREDITS ADDED", machine.CoinCredits)
+	g.snd.play(g.snd.coin)
+}
+
 // spin decides the outcome straight away, then sets each reel turning
 // towards its stop. Reels further right travel further and stop later.
 func (g *Game) spin() {
 	if g.m.Credits == 0 && g.m.FreeSpins == 0 {
-		g.newMachine()
+		g.reset()
 		return
 	}
 	res, ok := g.m.Spin()
 	if !ok {
 		g.clearWin()
-		g.message = "NOT ENOUGH CREDITS - CHOOSE A SMALLER BET"
+		g.message = "NOT ENOUGH CREDITS - INSERT A COIN OR BET LESS"
+		if g.m.Credits == 0 {
+			g.message = outOfCredits
+		}
 		return
 	}
 	if res.Free {
@@ -360,7 +398,7 @@ func (g *Game) advanceReels() {
 	case g.win > 0:
 		g.message = fmt.Sprintf("YOU WIN %d!", g.win)
 	case g.m.Credits == 0 && g.m.FreeSpins == 0:
-		g.message = "OUT OF CREDITS - PRESS SPIN FOR A NEW GAME"
+		g.message = outOfCredits
 	default:
 		g.message = "NO WIN"
 	}
@@ -451,11 +489,13 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"UP / DOWN", "change the bet per line"},
 		{"LEFT / RIGHT", "change the number of lines"},
 		{"M", "bet the maximum"},
+		{"C", "insert a coin for more credits"},
+		{"R", "reset to a new game"},
 		{"S", "sound on or off"},
 		{"ESC", "back to the menu"},
 	}
 	for i, k := range keys {
-		y := 306 + float64(i)*26
+		y := 304 + float64(i)*23
 		drawText(screen, k[0], screenW/2-70, y, 17, lightRed, alignEnd, alignStart)
 		drawText(screen, k[1], screenW/2-45, y, 17, white, alignStart, alignStart)
 	}
@@ -565,11 +605,20 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	frameRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, 2, lightGreen)
 	drawText(screen, spinLabel, spinButton.x+spinButton.w/2, spinButton.y+spinButton.h/2, 30, white, alignCenter, alignCenter)
 
+	fillRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, gold)
+	frameRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, 2, yellow)
+	coinLabel := fmt.Sprintf("INSERT COIN  +%d", machine.CoinCredits)
+	drawText(screen, coinLabel, coinButton.x+coinButton.w/2, coinButton.y+coinButton.h/2, 12, black, alignCenter, alignCenter)
+
+	fillRect(screen, resetButton.x, resetButton.y, resetButton.w, resetButton.h, red)
+	frameRect(screen, resetButton.x, resetButton.y, resetButton.w, resetButton.h, 2, lightRed)
+	drawText(screen, "RESET", resetButton.x+resetButton.w/2, resetButton.y+resetButton.h/2, 12, white, alignCenter, alignCenter)
+
 	sound := "ON"
 	if !g.snd.on {
 		sound = "OFF"
 	}
-	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    S sound %s    ESC menu", sound)
+	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    C coin    R reset    S sound %s    ESC menu", sound)
 	drawText(screen, hint, screenW/2, 550, 11, lightGray, alignCenter, alignStart)
 }
 
