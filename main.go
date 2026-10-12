@@ -36,6 +36,7 @@ const (
 
 	panelX = 582
 	panelW = 198
+	panelH = 354 // the paytable runs down beside the reels and the figures
 
 	// The two rows of buttons under the reels.
 	betRowY  = 448
@@ -81,7 +82,18 @@ type Game struct {
 	stopTick  int // when the reels last stopped, to time the win display
 	showLines int // ticks left to show the lines being played
 
+	free freeSpins
+
 	byeTicks int
+}
+
+// freeSpins tracks a run of free spins, from the spin that wins them until
+// the last one has been played.
+type freeSpins struct {
+	active bool
+	total  int // spins awarded so far, counting any won along the way
+	played int
+	win    int // credits won by the free spins
 }
 
 func newGame() *Game {
@@ -93,6 +105,7 @@ func newGame() *Game {
 func (g *Game) newMachine() {
 	g.m = machine.New(rand.Uint64(), rand.Uint64())
 	g.credits = g.m.Credits
+	g.free = freeSpins{}
 	g.clearWin()
 	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
 }
@@ -100,6 +113,7 @@ func (g *Game) newMachine() {
 // clearWin takes the last spin's win off the display.
 func (g *Game) clearWin() {
 	g.result.Wins = nil
+	g.result.Scatters = 0
 	g.win = 0
 	g.message = ""
 }
@@ -177,9 +191,30 @@ func (g *Game) updatePlay() {
 	if g.showLines > 0 {
 		g.showLines--
 	}
+	click := inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft)
+	x, y := ebiten.CursorPosition()
 
-	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		x, y := ebiten.CursorPosition()
+	// Free spins play themselves at the bet that won them, after a pause to
+	// show the last result. Pressing spin skips the pause.
+	if g.m.FreeSpins > 0 {
+		pause := 50
+		switch {
+		case g.result.FreeSpinsWon > 0:
+			pause = 180
+		case g.win > 0:
+			pause = 110
+		}
+		switch {
+		case pressed(ebiten.KeyEscape):
+			g.scene = sceneMenu
+		case g.ticks-g.stopTick > pause, click && spinButton.hit(x, y),
+			pressed(ebiten.KeySpace, ebiten.KeyEnter, ebiten.KeyNumpadEnter):
+			g.spin()
+		}
+		return
+	}
+
+	if click {
 		for i, n := range machine.BetChoices {
 			if betButton(i).hit(x, y) {
 				g.setBet(n)
@@ -249,7 +284,7 @@ func (g *Game) maxBet() {
 // spin decides the outcome straight away, then sets each reel turning
 // towards its stop. Reels further right travel further and stop later.
 func (g *Game) spin() {
-	if g.m.Credits == 0 {
+	if g.m.Credits == 0 && g.m.FreeSpins == 0 {
 		g.newMachine()
 		return
 	}
@@ -258,6 +293,11 @@ func (g *Game) spin() {
 		g.clearWin()
 		g.message = "NOT ENOUGH CREDITS - CHOOSE A SMALLER BET"
 		return
+	}
+	if res.Free {
+		g.free.played++
+	} else {
+		g.free = freeSpins{}
 	}
 	g.clearWin()
 	g.result = res
@@ -303,18 +343,38 @@ func (g *Game) advanceReels() {
 	g.stopTick = g.ticks
 	g.credits = g.m.Credits
 	g.win = g.result.Win
+	if g.result.Free {
+		g.free.win += g.win
+	}
+	if won := g.result.FreeSpinsWon; won > 0 {
+		g.free.active = true
+		g.free.total += won
+	}
+
 	switch {
+	case g.result.FreeSpinsWon > 0:
+		g.message = fmt.Sprintf("%d DICE! %d FREE SPINS", g.result.Scatters, g.result.FreeSpinsWon)
+		if g.win > 0 {
+			g.message += fmt.Sprintf(" AND YOU WIN %d!", g.win)
+		}
 	case g.win > 0:
 		g.message = fmt.Sprintf("YOU WIN %d!", g.win)
-		if g.win >= 10*g.m.TotalBet() {
-			g.snd.play(g.snd.bigWin)
-		} else {
-			g.snd.play(g.snd.win)
-		}
-	case g.m.Credits == 0:
+	case g.m.Credits == 0 && g.m.FreeSpins == 0:
 		g.message = "OUT OF CREDITS - PRESS SPIN FOR A NEW GAME"
 	default:
 		g.message = "NO WIN"
+	}
+	// The last free spin: report what the whole run won.
+	if g.free.active && g.m.FreeSpins == 0 {
+		g.free.active = false
+		g.message = fmt.Sprintf("FREE SPINS OVER - THEY WON %d CREDITS", g.free.win)
+	}
+
+	switch {
+	case g.result.FreeSpinsWon > 0, g.win >= 10*g.m.TotalBet():
+		g.snd.play(g.snd.bigWin)
+	case g.win > 0:
+		g.snd.play(g.snd.win)
 	}
 }
 
@@ -364,13 +424,13 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	}
 	drawText(screen, "MAKE YOUR CHOICE", screenW/2, 355, 24, lightBlue, alignCenter, alignStart)
 
-	for s := machine.Cherry; s < machine.NumSymbols; s++ {
-		drawSymbol(screen, s, screenW/2-225+float64(s)*90, 470, 0.7)
+	for s := machine.Ten; s < machine.NumSymbols; s++ {
+		drawSymbol(screen, s, screenW/2-338+float64(s)*52, 470, 0.42)
 	}
 }
 
 func (g *Game) drawHelp(screen *ebiten.Image) {
-	drawText(screen, "HOW TO PLAY", screenW/2, 40, 36, yellow, alignCenter, alignStart)
+	drawText(screen, "HOW TO PLAY", screenW/2, 34, 36, yellow, alignCenter, alignStart)
 
 	lines := []string{
 		"Choose a bet per line and how many lines to play, then spin.",
@@ -378,10 +438,12 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"Each line is a path across the five reels, read left to right.",
 		"Three or more of a symbol in a row from the left reel win.",
 		"Four or five in a row pay much more. Cherries pay from two.",
-		"A line's win is multiplied by the bet per line.",
+		"A win on a line is multiplied by the bet per line.",
+		"The joker is wild on reels 2 to 5 and stands in for any symbol.",
+		"Three or more dice anywhere win free spins, with all wins tripled.",
 	}
 	for i, l := range lines {
-		drawText(screen, l, screenW/2-265, 110+float64(i)*28, 17, white, alignStart, alignStart)
+		drawText(screen, l, screenW/2-280, 92+float64(i)*25, 16, white, alignStart, alignStart)
 	}
 
 	keys := [][2]string{
@@ -393,7 +455,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"ESC", "back to the menu"},
 	}
 	for i, k := range keys {
-		y := 310 + float64(i)*28
+		y := 306 + float64(i)*26
 		drawText(screen, k[0], screenW/2-70, y, 17, lightRed, alignEnd, alignStart)
 		drawText(screen, k[1], screenW/2-45, y, 17, white, alignStart, alignStart)
 	}
@@ -420,7 +482,18 @@ func (g *Game) drawAbout(screen *ebiten.Image) {
 }
 
 func (g *Game) drawPlay(screen *ebiten.Image) {
-	drawText(screen, "POKER MACHINE", screenW/2, 24, 44, lightBlue, alignCenter, alignStart)
+	// While free spins are being played the title keeps count of them.
+	inFree := g.free.active || g.m.FreeSpins > 0
+	if inFree {
+		title := fmt.Sprintf("FREE SPIN %d OF %d", g.free.played, g.free.total)
+		if g.free.played == 0 {
+			title = fmt.Sprintf("%d FREE SPINS", g.free.total)
+		}
+		drawText(screen, title, screenW/2, 22, 34, yellow, alignCenter, alignStart)
+		drawText(screen, fmt.Sprintf("ALL WINS x%d", machine.FreeSpinMultiplier), screenW/2, 62, 14, lightRed, alignCenter, alignStart)
+	} else {
+		drawText(screen, "POKER MACHINE", screenW/2, 24, 44, lightBlue, alignCenter, alignStart)
+	}
 
 	// The magenta frame shows through the gaps between the reels.
 	fillRect(screen, reelsX-5, reelsY-5, reelsW+10, reelsH+10, magenta)
@@ -433,12 +506,21 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	case win != nil:
 		drawPayline(screen, win.Line, 4)
 		for i := range win.Matched {
-			x, y := cellCentre(i, machine.Paylines[win.Line][i])
-			frameRect(screen, x-reelW/2+2, y-rowH/2+2, reelW-4, rowH-4, 4, lineColor(win.Line))
+			boxCell(screen, i, machine.Paylines[win.Line][i], lineColor(win.Line))
 		}
 	case g.showLines > 0 && !g.spinning:
 		for l := range g.m.Lines {
 			drawPayline(screen, l, 2)
+		}
+	}
+	// Winning scatters flash wherever they landed.
+	if !g.spinning && g.result.FreeSpinsWon > 0 && g.ticks/15%2 == 0 {
+		for i, col := range g.result.Grid {
+			for row, sym := range col {
+				if sym == machine.Scatter {
+					boxCell(screen, i, row, white)
+				}
+			}
 		}
 	}
 
@@ -447,7 +529,11 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	drawStat(screen, "CREDITS", g.credits, 0, lightGreen)
 	drawStat(screen, "BET / LINE", g.m.BetPerLine, 1, white)
 	drawStat(screen, "LINES", g.m.Lines, 2, white)
-	drawStat(screen, "TOTAL BET", g.m.TotalBet(), 3, white)
+	if inFree {
+		drawStat(screen, "FREE SPINS WIN", g.free.win, 3, yellow)
+	} else {
+		drawStat(screen, "TOTAL BET", g.m.TotalBet(), 3, white)
+	}
 	drawStat(screen, "WIN", g.win, 4, yellow)
 
 	message := g.message
@@ -456,18 +542,23 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	drawText(screen, message, reelsX+reelsW/2, 420, 16, lightRed, alignCenter, alignStart)
 
+	// The bet cannot be changed while free spins are waiting.
+	locked := g.m.FreeSpins > 0
 	for i, n := range machine.BetChoices {
-		drawButton(screen, betButton(i), n == g.m.BetPerLine, 11, fmt.Sprintf("PLAY %d", n), "PER LINE")
+		drawButton(screen, betButton(i), n == g.m.BetPerLine, locked, 11, fmt.Sprintf("PLAY %d", n), "PER LINE")
 	}
 	for i, n := range machine.LineChoices {
 		label := fmt.Sprintf("%d LINES", n)
 		if n == 1 {
 			label = "1 LINE"
 		}
-		drawButton(screen, lineButton(i), n == g.m.Lines, 14, label)
+		drawButton(screen, lineButton(i), n == g.m.Lines, locked, 14, label)
 	}
 	spinLabel := "SPIN"
-	if g.m.Credits == 0 && !g.spinning {
+	switch {
+	case locked:
+		spinLabel = "FREE SPIN"
+	case g.m.Credits == 0 && !g.spinning:
 		spinLabel = "NEW GAME"
 	}
 	fillRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, green)
@@ -480,6 +571,12 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    S sound %s    ESC menu", sound)
 	drawText(screen, hint, screenW/2, 550, 11, lightGray, alignCenter, alignStart)
+}
+
+// boxCell outlines the cell at the given reel and row.
+func boxCell(screen *ebiten.Image, reel, row int, c color.Color) {
+	x, y := cellCentre(reel, row)
+	frameRect(screen, x-reelW/2+2, y-rowH/2+2, reelW-4, rowH-4, 4, c)
 }
 
 // cellCentre is the middle of the cell at the given reel and row.
@@ -543,20 +640,34 @@ func (g *Game) drawReel(screen *ebiten.Image, i int) {
 	base := math.Floor(g.reels[i].pos)
 	frac := g.reels[i].pos - base
 	for k := -2; k <= 2; k++ {
-		sym := strip[((int(base)+k)%n+n)%n]
-		drawSymbol(window, sym, cx, cy-(float64(k)-frac)*rowH, reelScale)
+		stop := ((int(base)+k)%n + n) % n
+		y := cy - (float64(k)-frac)*rowH
+		if strip[stop] == machine.Link {
+			drawChip(window, cx, y, reelScale, g.chipLabel(machine.LinkPrizeAt(i, stop)))
+			continue
+		}
+		drawSymbol(window, strip[stop], cx, y, reelScale)
 	}
 }
 
-// The paytable lists symbols from the best paying down.
-var payOrder = [...]machine.Symbol{
-	machine.Dollar, machine.Seven, machine.Bar, machine.Bell, machine.Plum, machine.Cherry,
+// chipLabel is the text on a link chip: a jackpot's name, or a credit value
+// that grows with the bet.
+func (g *Game) chipLabel(p machine.LinkPrize) string {
+	if p.Jackpot != "" {
+		return p.Jackpot
+	}
+	return fmt.Sprint(p.Bets * g.m.TotalBet())
 }
 
-// drawPaytable draws what each win pays at the current bet per line,
-// picking out the entry for win if there is one.
+// drawPaytable draws what each win pays at the current bet, picking out the
+// entry for win if there is one.
 func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
-	const rowsY, rowStep = 118, 29
+	const (
+		top     = reelsY - 4
+		rowsY   = top + 26
+		rowStep = 22
+		icon    = 0.22
+	)
 
 	// The right-hand edge of the column for a run of n symbols. Columns for
 	// longer runs are wider, as their payouts have more digits.
@@ -566,10 +677,10 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 		return fmt.Sprint(machine.Pays[sym][n] * g.m.BetPerLine)
 	}
 
-	frameRect(screen, panelX, reelsY-4, panelW, reelsH+8, 2, magenta)
-	drawText(screen, "PAYS", panelX+12, reelsY+4, 16, yellow, alignStart, alignStart)
+	frameRect(screen, panelX, top, panelW, panelH, 2, magenta)
+	drawText(screen, "PAYS", panelX+12, top+6, 16, yellow, alignStart, alignStart)
 	for n := 3; n <= machine.Reels; n++ {
-		drawText(screen, fmt.Sprintf("x%d", n), col(n), reelsY+4, 16, yellow, alignEnd, alignStart)
+		drawText(screen, fmt.Sprintf("x%d", n), col(n), top+6, 16, yellow, alignEnd, alignStart)
 	}
 
 	// row draws one line of the table, lit if it is the win, and returns
@@ -580,13 +691,14 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 			fillRect(screen, panelX+3, cy-rowStep/2, panelW-6, rowStep, darkGray)
 		}
 		for j := range icons {
-			drawSymbol(screen, sym, panelX+24+float64(j)*32, cy, 0.28)
+			drawSymbol(screen, sym, panelX+22+float64(j)*26, cy, icon)
 		}
 		return cy
 	}
 
+	// The symbols are listed from the best paying down.
 	i := 0
-	for _, sym := range payOrder {
+	for sym := machine.Dollar; sym >= machine.Ten; sym-- {
 		lit := win != nil && win.Symbol == sym && win.Matched >= 3
 		cy := row(i, sym, 1, lit)
 		for n := 3; n <= machine.Reels; n++ {
@@ -602,8 +714,22 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 	lit := win != nil && win.Symbol == machine.Cherry && win.Matched == 2
 	cy := row(i, machine.Cherry, 2, lit)
 	drawText(screen, pays(machine.Cherry, 2), col(machine.Reels), cy, 13, white, alignEnd, alignCenter)
+	i++
+
+	y := float64(rowsY + i*rowStep + 4)
 	note := fmt.Sprintf("AT %d PER LINE", g.m.BetPerLine)
-	drawText(screen, note, panelX+panelW-12, reelsY+reelsH-3, 10, lightGray, alignEnd, alignCenter)
+	drawText(screen, note, panelX+panelW-12, y, 10, lightGray, alignEnd, alignStart)
+
+	bet := g.m.TotalBet()
+	notes := []string{
+		"JOKER: WILD ON REELS 2-5",
+		fmt.Sprintf("3+ DICE: FREE SPINS, WINS x%d", machine.FreeSpinMultiplier),
+		fmt.Sprintf("DICE PAY %d / %d / %d",
+			machine.ScatterPays[3]*bet, machine.ScatterPays[4]*bet, machine.ScatterPays[5]*bet),
+	}
+	for j, l := range notes {
+		drawText(screen, l, panelX+10, y+14+float64(j)*12, 9, lightGray, alignStart, alignStart)
+	}
 }
 
 // drawStat draws a labelled number under the given reel column.
@@ -614,11 +740,15 @@ func drawStat(screen *ebiten.Image, label string, value, column int, c color.Col
 }
 
 // drawButton draws a button with one or two lines of text. The selected
-// button of a row is shown lit.
-func drawButton(screen *ebiten.Image, b button, selected bool, size float64, lines ...string) {
+// button of a row is shown lit, and the others are dimmed when the row is
+// locked.
+func drawButton(screen *ebiten.Image, b button, selected, locked bool, size float64, lines ...string) {
 	fill, edge, ink := color.Color(blue), color.Color(lightBlue), color.Color(white)
-	if selected {
+	switch {
+	case selected:
 		fill, edge, ink = yellow, white, black
+	case locked:
+		fill, edge, ink = black, darkGray, darkGray
 	}
 	fillRect(screen, b.x, b.y, b.w, b.h, fill)
 	frameRect(screen, b.x, b.y, b.w, b.h, 2, edge)

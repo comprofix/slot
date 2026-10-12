@@ -13,19 +13,21 @@ import (
 
 // The 16-colour palette the Turbo Pascal Graph unit used.
 var (
-	black      = color.RGBA{0, 0, 0, 255}
-	blue       = color.RGBA{0, 0, 170, 255}
-	green      = color.RGBA{0, 170, 0, 255}
-	red        = color.RGBA{170, 0, 0, 255}
-	magenta    = color.RGBA{170, 0, 170, 255}
-	brown      = color.RGBA{170, 85, 0, 255}
-	lightGray  = color.RGBA{170, 170, 170, 255}
-	darkGray   = color.RGBA{85, 85, 85, 255}
-	lightBlue  = color.RGBA{85, 85, 255, 255}
-	lightGreen = color.RGBA{85, 255, 85, 255}
-	lightRed   = color.RGBA{255, 85, 85, 255}
-	yellow     = color.RGBA{255, 255, 85, 255}
-	white      = color.RGBA{255, 255, 255, 255}
+	black        = color.RGBA{0, 0, 0, 255}
+	blue         = color.RGBA{0, 0, 170, 255}
+	green        = color.RGBA{0, 170, 0, 255}
+	red          = color.RGBA{170, 0, 0, 255}
+	magenta      = color.RGBA{170, 0, 170, 255}
+	brown        = color.RGBA{170, 85, 0, 255}
+	lightGray    = color.RGBA{170, 170, 170, 255}
+	darkGray     = color.RGBA{85, 85, 85, 255}
+	lightBlue    = color.RGBA{85, 85, 255, 255}
+	lightCyan    = color.RGBA{85, 255, 255, 255}
+	lightGreen   = color.RGBA{85, 255, 85, 255}
+	lightRed     = color.RGBA{255, 85, 85, 255}
+	lightMagenta = color.RGBA{255, 85, 255, 255}
+	yellow       = color.RGBA{255, 255, 85, 255}
+	white        = color.RGBA{255, 255, 255, 255}
 )
 
 // Extra colours the original palette has no good match for.
@@ -35,6 +37,7 @@ var (
 	plumGlow = color.RGBA{175, 135, 255, 255}
 	gold     = color.RGBA{255, 170, 0, 255}
 	goldDark = color.RGBA{190, 110, 0, 255}
+	chipFelt = color.RGBA{0, 0, 96, 255}
 )
 
 var fontSource *text.GoTextFaceSource

@@ -7,48 +7,112 @@ import (
 
 func TestEvaluate(t *testing.T) {
 	const (
-		c = Cherry
-		p = Plum
-		l = Bell
-		b = Bar
-		s = Seven
-		d = Dollar
+		t0 = Ten
+		a  = Ace
+		c  = Cherry
+		p  = Plum
+		b  = Bar
+		s  = Seven
+		d  = Dollar
+		w  = Wild
+		x  = Scatter
+		k  = Link
 	)
 	tests := []struct {
 		line    [Reels]Symbol
 		pay     int
+		sym     Symbol
 		matched int
 	}{
-		{[Reels]Symbol{d, d, d, d, d}, 5000, 5},
-		{[Reels]Symbol{d, d, d, d, s}, 500, 4},
-		{[Reels]Symbol{d, d, d, b, d}, 100, 3},
-		{[Reels]Symbol{s, s, s, s, s}, 750, 5},
-		{[Reels]Symbol{s, s, s, p, p}, 30, 3},
-		{[Reels]Symbol{b, b, b, b, c}, 75, 4},
-		{[Reels]Symbol{l, l, l, c, c}, 8, 3},
-		{[Reels]Symbol{p, p, p, p, p}, 75, 5},
-		{[Reels]Symbol{c, c, c, c, c}, 50, 5},
-		{[Reels]Symbol{c, c, c, b, c}, 5, 3},
-		{[Reels]Symbol{c, c, b, c, c}, 2, 2},
-		{[Reels]Symbol{c, p, c, c, c}, 0, 0},
-		{[Reels]Symbol{p, c, c, c, c}, 0, 0},
-		{[Reels]Symbol{b, b, s, b, b}, 0, 0},
-		{[Reels]Symbol{p, s, s, s, s}, 0, 0},
-		{[Reels]Symbol{p, l, d, b, s}, 0, 0},
+		{[Reels]Symbol{d, d, d, d, d}, 5000, d, 5},
+		{[Reels]Symbol{d, d, d, d, s}, 500, d, 4},
+		{[Reels]Symbol{d, d, d, b, d}, 100, d, 3},
+		{[Reels]Symbol{s, s, s, s, s}, 1000, s, 5},
+		{[Reels]Symbol{t0, t0, t0, a, a}, 5, t0, 3},
+		{[Reels]Symbol{a, a, a, a, c}, 40, a, 4},
+		{[Reels]Symbol{c, c, c, c, c}, 200, c, 5},
+		{[Reels]Symbol{c, c, b, c, c}, 2, c, 2},
+		{[Reels]Symbol{c, p, c, c, c}, 0, 0, 0},
+		{[Reels]Symbol{p, p, s, p, p}, 0, 0, 0},
+		{[Reels]Symbol{p, s, s, s, s}, 0, 0, 0},
+
+		// Wilds stand in for the symbol the line starts with.
+		{[Reels]Symbol{b, w, b, p, p}, 25, b, 3},
+		{[Reels]Symbol{b, w, w, w, b}, 500, b, 5},
+		{[Reels]Symbol{b, w, w, w, w}, 500, b, 5},
+		{[Reels]Symbol{c, w, p, p, p}, 2, c, 2},
+		{[Reels]Symbol{p, w, c, c, c}, 0, 0, 0},
+		{[Reels]Symbol{w, w, s, s, p}, 200, s, 4},
+		{[Reels]Symbol{w, w, w, w, w}, 0, 0, 0},
+
+		// Scatters and chips never win along a line, with or without wilds.
+		{[Reels]Symbol{x, x, x, x, x}, 0, 0, 0},
+		{[Reels]Symbol{k, k, k, k, k}, 0, 0, 0},
+		{[Reels]Symbol{x, w, w, w, w}, 0, 0, 0},
+		{[Reels]Symbol{w, w, k, k, k}, 0, 0, 0},
+		{[Reels]Symbol{b, b, x, b, b}, 0, 0, 0},
 	}
 	for _, tt := range tests {
-		pay, matched := Evaluate(tt.line)
-		if pay != tt.pay || matched != tt.matched {
-			t.Errorf("Evaluate(%v) = %d, %d; want %d, %d", tt.line, pay, matched, tt.pay, tt.matched)
+		pay, sym, matched := Evaluate(tt.line)
+		if pay != tt.pay || sym != tt.sym || matched != tt.matched {
+			t.Errorf("Evaluate(%v) = %d, %v, %d; want %d, %v, %d",
+				tt.line, pay, sym, matched, tt.pay, tt.sym, tt.matched)
+		}
+	}
+}
+
+func TestStrips(t *testing.T) {
+	for reel, strip := range Strips {
+		n := len(strip)
+		for i, sym := range strip {
+			if sym == strip[(i+1)%n] || sym == strip[(i+2)%n] {
+				t.Errorf("reel %d: %v comes twice within three stops at %d", reel+1, sym, i)
+			}
+		}
+		if count(reel, Scatter) == 0 || count(reel, Link) == 0 {
+			t.Errorf("reel %d is missing a scatter or a link chip", reel+1)
+		}
+	}
+	if n := count(0, Wild); n != 0 {
+		t.Errorf("reel 1 has %d wilds, want none", n)
+	}
+	for reel := 1; reel < Reels; reel++ {
+		if count(reel, Wild) == 0 {
+			t.Errorf("reel %d has no wild", reel+1)
 		}
 	}
 }
 
 func TestRTP(t *testing.T) {
 	got := RTP()
-	t.Logf("return to player: %.2f%%", got*100)
-	if math.Abs(got-0.72) > 0.005 {
-		t.Errorf("RTP() = %v, want about 0.72", got)
+	t.Logf("return to player %.2f%%: line wins %.2f%%, free spins 1 in %.0f",
+		got*100, lineReturn()*100, 1/FreeSpinOdds())
+	if math.Abs(got-0.92) > 0.005 {
+		t.Errorf("RTP() = %v, want about 0.92", got)
+	}
+}
+
+// lineReturn works the odds out from symbol counts. Check it against every
+// combination of stops on one payline.
+func TestLineReturn(t *testing.T) {
+	total, combos := 0, 0
+	var line [Reels]Symbol
+	for _, line[0] = range Strips[0] {
+		for _, line[1] = range Strips[1] {
+			for _, line[2] = range Strips[2] {
+				for _, line[3] = range Strips[3] {
+					for _, line[4] = range Strips[4] {
+						pay, _, _ := Evaluate(line)
+						total += pay
+						combos++
+					}
+				}
+			}
+		}
+	}
+	want := float64(total) / float64(combos)
+	if got := lineReturn(); math.Abs(got-want) > 1e-9 {
+		t.Errorf("lineReturn() = %v, want %v", got, want)
 	}
 }
 
@@ -86,22 +150,41 @@ func TestPaylines(t *testing.T) {
 	}
 }
 
-// Every spin's result should agree with the grid it reports, line by line.
+// Every spin's result should agree with the grid it reports, line by line,
+// and free spins should cost nothing and pay triple.
 func TestSpinAccounting(t *testing.T) {
 	m := New(1, 2)
-	for n := range 20000 {
-		m.Credits = StartCredits
-		m.Lines = LineChoices[n%len(LineChoices)]
-		m.BetPerLine = BetChoices[n/len(LineChoices)%len(BetChoices)]
-		before := m.Credits
+	freeSpins := 0
+	for n := range 50000 {
+		if m.FreeSpins == 0 {
+			m.Credits = StartCredits
+			m.Lines = LineChoices[n%len(LineChoices)]
+			m.BetPerLine = BetChoices[n/len(LineChoices)%len(BetChoices)]
+		}
+		before, waiting := m.Credits, m.FreeSpins
 
 		r, ok := m.Spin()
 		if !ok {
 			t.Fatalf("Spin refused with %d credits and bet %d", before, m.TotalBet())
 		}
+		cost, multiplier := m.TotalBet(), 1
+		if waiting > 0 {
+			cost, multiplier = 0, FreeSpinMultiplier
+			freeSpins++
+		}
+		if r.Free != (waiting > 0) {
+			t.Fatalf("Free = %v with %d free spins waiting", r.Free, waiting)
+		}
+
+		scatters := 0
 		for i, stop := range r.Stops {
 			if r.Grid[i] != Window(i, stop) {
 				t.Fatalf("reel %d grid %v does not match stop %d", i, r.Grid[i], stop)
+			}
+			for _, s := range r.Grid[i] {
+				if s == Scatter {
+					scatters++
+				}
 			}
 		}
 
@@ -112,9 +195,10 @@ func TestSpinAccounting(t *testing.T) {
 			for i, row := range Paylines[l] {
 				line[i] = r.Grid[i][row]
 			}
-			if pay, matched := Evaluate(line); pay > 0 {
-				wins = append(wins, LineWin{l, line[0], matched, pay * m.BetPerLine})
-				total += pay * m.BetPerLine
+			if pay, sym, matched := Evaluate(line); pay > 0 {
+				win := pay * m.BetPerLine * multiplier
+				wins = append(wins, LineWin{l, sym, matched, win})
+				total += win
 			}
 		}
 		if len(wins) != len(r.Wins) {
@@ -125,29 +209,54 @@ func TestSpinAccounting(t *testing.T) {
 				t.Fatalf("win %d = %+v, want %+v", i, r.Wins[i], wins[i])
 			}
 		}
-		if r.Win != total || m.Credits != before-m.TotalBet()+total {
-			t.Fatalf("win %d and credits %d, want %d and %d", r.Win, m.Credits, total, before-m.TotalBet()+total)
+
+		scatterWin := ScatterPays[scatters] * m.TotalBet() * multiplier
+		total += scatterWin
+		if r.Scatters != scatters || r.ScatterWin != scatterWin || r.FreeSpinsWon != FreeSpinAwards[scatters] {
+			t.Fatalf("scatters %d paying %d with %d free spins; want %d, %d, %d",
+				r.Scatters, r.ScatterWin, r.FreeSpinsWon, scatters, scatterWin, FreeSpinAwards[scatters])
 		}
+		if r.Win != total || m.Credits != before-cost+total {
+			t.Fatalf("win %d and credits %d, want %d and %d", r.Win, m.Credits, total, before-cost+total)
+		}
+		if want := max(waiting-1, 0) + r.FreeSpinsWon; m.FreeSpins != want {
+			t.Fatalf("%d free spins waiting, want %d", m.FreeSpins, want)
+		}
+	}
+	if freeSpins == 0 {
+		t.Error("no free spins were played")
 	}
 }
 
-// A long run of real spins on all lines should pay back close to the
-// calculated RTP.
+// A long run of real spins on all lines, free spins included, should pay
+// back close to the calculated RTP and trigger free spins about as often as
+// calculated.
 func TestSpinReturn(t *testing.T) {
-	const spins = 1_000_000
+	const spins = 4_000_000
 	m := New(3, 4)
 	m.Lines = len(Paylines)
-	bet, won := 0, 0
-	for range spins {
+	bet, won, paid, triggers := 0, 0, 0, 0
+	for paid < spins {
 		m.Credits = StartCredits
 		r, _ := m.Spin()
-		bet += m.TotalBet()
+		if !r.Free {
+			paid++
+			bet += m.TotalBet()
+			if r.FreeSpinsWon > 0 {
+				triggers++
+			}
+		}
 		won += r.Win
 	}
 	got := float64(won) / float64(bet)
-	t.Logf("paid back %.2f%% over %d spins of %d lines", got*100, spins, m.Lines)
-	if math.Abs(got-RTP()) > 0.02 {
+	odds := float64(triggers) / spins
+	t.Logf("paid back %.2f%% over %d spins of %d lines; free spins 1 in %.1f",
+		got*100, spins, m.Lines, 1/odds)
+	if math.Abs(got-RTP()) > 0.015 {
 		t.Errorf("paid back %v, want about %v", got, RTP())
+	}
+	if want := FreeSpinOdds(); math.Abs(odds-want) > want/20 {
+		t.Errorf("free spins on %v of spins, want about %v", odds, want)
 	}
 }
 
@@ -160,5 +269,11 @@ func TestSpinNeedsCredits(t *testing.T) {
 	}
 	if m.Credits != m.TotalBet()-1 {
 		t.Errorf("credits = %d after refused spin, want %d", m.Credits, m.TotalBet()-1)
+	}
+
+	// A free spin needs no credits.
+	m.Credits, m.FreeSpins = 0, 1
+	if r, ok := m.Spin(); !ok || !r.Free {
+		t.Error("free spin refused with no credits")
 	}
 }

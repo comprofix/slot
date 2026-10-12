@@ -56,29 +56,47 @@ The keyboard works too:
 You start with 1000 credits. Each payline is a path across the five reels.
 Three or more of a symbol in a row along a line, starting from the left
 reel, win; four or five in a row pay much more. Cherries also pay for two.
-A line's win is multiplied by the bet per line, and the wins on all the
+A win on a line is multiplied by the bet per line, and the wins on all the
 lines played are added together.
 
 There are 25 paylines, listed in `machine/machine.go`. Choosing
 a number of lines shows them over the reels, and after a win each winning
 line is shown in turn.
 
+### Symbols
+
+| Symbol | What it does |
+|---|---|
+| 10, J, Q, K, A | Low-paying line symbols |
+| Cherry, plum, bell, BAR, seven, dollar | Higher-paying line symbols |
+| Joker | Wild: stands in for any of the symbols above. Reels 2 to 5 only |
+| Dice | Scatter: three or more anywhere pay a prize and win free spins |
+| Poker chip | Will start the link feature, which is not built yet. For now it does nothing |
+
+### Free spins
+
+Three, four or five dice anywhere on the reels pay 5, 20 or 400 times the
+total bet and win 15, 20 or 25 free spins. Free spins cost nothing, play by
+themselves at the bet that won them, and pay every win three times over.
+More dice during free spins win more free spins.
+
 ## Layout
 
-- `machine/` holds the rules: reel strips, paylines, paytable, spinning and
+- `machine/` holds the rules: reel strips, paylines, paytable, free spins and
   credits.
   It has no graphics and is covered by tests.
 - `main.go` has the screens, buttons, input and reel animation.
-- `symbols.go` draws the six symbols from simple shapes.
+- `symbols.go` draws the symbols from simple shapes.
 - `draw.go` has the palette and drawing helpers.
 - `sound.go` generates the sound effects.
 
 ## Odds
 
-The odds come from the reel strips and paytable in `machine/machine.go`.
-The machine pays back about 72% of what is bet over the long run, however
-many lines are played. Run the tests
-to recalculate it after changing either:
+The odds come from the reel strips, paytable and free spin rules in
+`machine/machine.go`. The machine pays back about 92% of what is bet over
+the long run, however many lines are played: about 47% from line wins and
+the rest from the dice and free spins. Free spins come up about once in 82
+spins. Run the tests to recalculate these after changing the rules:
 
 ```
 go test -v ./machine/
