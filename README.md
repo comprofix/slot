@@ -53,12 +53,12 @@ The keyboard works too:
 | M | Play all 25 lines at the highest bet the credits cover |
 | A | Auto spin on or off |
 | C | Insert a coin: 100 more credits |
-| R | Reset to a new game with 1000 credits |
+| R | Reset your credits to 1000 |
 | S | Sound on or off |
 | Esc | Back to the menu |
 
 You start with 1000 credits. The INSERT COIN button adds 100 more whenever
-you want them, and RESET starts a new game. Each payline is a path across
+you want them, and RESET puts them back to 1000. Each payline is a path across
 the five reels.
 Three or more of a symbol in a row along a line, starting from the left
 reel, win; four or five in a row pay much more. The 10, cherry, seven and
@@ -116,8 +116,18 @@ start at $5,000 and $20,000 and grow with every paid spin, by 1% and 0.5%
 of the bet; they pay the same whatever the bet, and go back to their
 starting amounts when won. To keep small bets from having the same shot at
 them as large ones, a MAJOR chip and the chip that would complete the grid
-both land more often the more you bet. The pots start afresh each time the
-game is opened or reset.
+both land more often the more you bet.
+
+### Saved game
+
+The game is saved after every spin, so you can close it at any time and
+carry on later with the same credits, bet and jackpot pots, and with any
+free spins or link feature still to play. RESET only ever touches the
+credits: the MAJOR and GRAND pots keep growing until someone wins them.
+
+The save is one small file, `PokerMachine/save.json`, in your settings
+folder: `%AppData%` on Windows and `~/.config` on Linux. Delete it to start
+again from scratch, pots included.
 
 ## Layout
 
@@ -126,6 +136,7 @@ game is opened or reset.
   It has no graphics and is covered by tests.
 - `main.go` has the screens, buttons, input and reel animation.
 - `linkview.go` shows the link feature and the jackpot meters.
+- `save.go` keeps the game between sessions.
 - `symbols.go` draws the symbols from simple shapes.
 - `draw.go` has the palette and drawing helpers.
 - `sound.go` generates the sound effects.

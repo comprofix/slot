@@ -70,6 +70,7 @@ func (g *Game) updateLink(hurry bool) {
 			return
 		}
 		l.next, _ = g.m.Respin()
+		g.save()
 		l.phase = linkSpin
 		l.timer = linkSpinTicks
 		g.message = ""

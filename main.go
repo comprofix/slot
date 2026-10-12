@@ -88,6 +88,9 @@ type Game struct {
 
 	auto bool // spins are being played automatically
 
+	savePath   string // where the game is kept; empty if it cannot be
+	saveFailed bool
+
 	byeTicks int
 }
 
@@ -102,19 +105,38 @@ type freeSpins struct {
 
 func newGame() *Game {
 	g := &Game{snd: newSounds(), rtp: machine.RTP(len(machine.Paylines))}
-	g.newMachine()
+	g.m = machine.New(rand.Uint64(), rand.Uint64())
+	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
+
+	// Pick up the saved game, if there is one. A game with no folder to be
+	// saved in still plays; it just starts afresh each time.
+	if path, err := savePath(); err == nil {
+		g.savePath = path
+		if saved, ok := loadGame(path); ok {
+			g.m.Restore(saved)
+			g.resume()
+		}
+	}
+	g.credits = g.m.Credits
 	return g
 }
 
-func (g *Game) newMachine() {
-	g.m = machine.New(rand.Uint64(), rand.Uint64())
-	g.credits = g.m.Credits
-	g.free = freeSpins{}
-	g.link = linkView{}
-	g.spun = false
-	g.auto = false
-	g.clearWin()
-	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
+// resume puts back on screen a feature that was still being played when
+// the game was last closed.
+func (g *Game) resume() {
+	if n := g.m.FreeSpins; n > 0 {
+		g.free = freeSpins{active: true, total: n}
+		g.message = fmt.Sprintf("%d FREE SPINS TO PLAY", n)
+	}
+	if g.m.Link != nil {
+		g.link = linkView{
+			show:  true,
+			timer: linkIntroTicks,
+			state: *g.m.Link,
+			total: g.m.LinkTotal(),
+		}
+		g.message = "LINK FEATURE TO FINISH"
+	}
 }
 
 // clearWin takes the last spin's win off the display.
@@ -323,6 +345,7 @@ func (g *Game) setBet(n int) {
 	g.m.BetPerLine = n
 	g.clearWin()
 	g.snd.play(g.snd.click)
+	g.save()
 }
 
 func (g *Game) setLines(n int) {
@@ -330,6 +353,7 @@ func (g *Game) setLines(n int) {
 	g.clearWin()
 	g.showLines = 120
 	g.snd.play(g.snd.click)
+	g.save()
 }
 
 // maxBet plays every line at the highest bet per line the credits cover.
@@ -343,14 +367,21 @@ func (g *Game) maxBet() {
 	}
 	g.setLines(lines)
 	g.m.BetPerLine = bet
+	g.save()
 }
 
-const outOfCredits = "OUT OF CREDITS - INSERT A COIN OR START A NEW GAME"
+const outOfCredits = "OUT OF CREDITS - INSERT A COIN OR RESET"
 
-// reset starts a new game with the starting credits.
+// reset puts the credits back to the starting amount. The bet and the
+// jackpot pots are left as they are.
 func (g *Game) reset() {
-	g.newMachine()
+	g.m.ResetCredits()
+	g.credits = g.m.Credits
+	g.auto = false
+	g.clearWin()
+	g.message = "CREDITS RESET - PRESS SPIN"
 	g.snd.play(g.snd.click)
+	g.save()
 }
 
 // insertCoin adds credits, so play can go on after they run out.
@@ -359,6 +390,7 @@ func (g *Game) insertCoin() {
 	g.credits = g.m.Credits
 	g.message = fmt.Sprintf("COIN INSERTED - %d CREDITS ADDED", machine.CoinCredits)
 	g.snd.play(g.snd.coin)
+	g.save()
 }
 
 // spin decides the outcome straight away, then sets each reel turning
@@ -377,6 +409,9 @@ func (g *Game) spin() {
 		}
 		return
 	}
+	// The machine has already settled the spin, so it is safe to save now
+	// even though the reels have yet to show it.
+	g.save()
 	if res.Free {
 		g.free.played++
 	} else {
@@ -545,7 +580,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"M", "bet the maximum"},
 		{"A", "auto spin on or off"},
 		{"C", "insert a coin for more credits"},
-		{"R", "reset to a new game"},
+		{"R", "reset your credits"},
 		{"S", "sound on or off"},
 		{"ESC", "back to the menu"},
 	}
