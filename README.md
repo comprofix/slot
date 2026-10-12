@@ -35,7 +35,8 @@ go build -o slot .
 
 Choose a bet per line and a number of lines with the buttons under the
 reels, then press SPIN. A spin costs the bet per line times the number of
-lines.
+lines. AUTO SPIN keeps spinning at that bet until you press it again, a
+feature is won or the credits run short.
 
 | Buttons | Choices |
 |---|---|
@@ -50,6 +51,7 @@ The keyboard works too:
 | Up / Down | Change the bet per line |
 | Left / Right | Change the number of lines |
 | M | Play all 25 lines at the highest bet the credits cover |
+| A | Auto spin on or off |
 | C | Insert a coin: 100 more credits |
 | R | Reset to a new game with 1000 credits |
 | S | Sound on or off |

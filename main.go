@@ -86,6 +86,8 @@ type Game struct {
 	link linkView
 	spun bool // a spin has been played, so the chips showing were dealt
 
+	auto bool // spins are being played automatically
+
 	byeTicks int
 }
 
@@ -110,6 +112,7 @@ func (g *Game) newMachine() {
 	g.free = freeSpins{}
 	g.link = linkView{}
 	g.spun = false
+	g.auto = false
 	g.clearWin()
 	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
 }
@@ -149,15 +152,17 @@ func lineButton(i int) button {
 	return button{reelsX + float64(i)*(reelW+reelGap), lineRowY, reelW, buttonH}
 }
 
-// The spin button sits under the paytable beside the two rows, with the coin
-// and reset buttons below it.
+// The spin and auto spin buttons sit under the paytable beside the two rows,
+// with the coin and reset buttons below them.
 const (
 	coinH  = 24
 	resetW = 64
+	autoW  = 62
 )
 
 var (
-	spinButton  = button{panelX, betRowY, panelW, lineRowY + buttonH - betRowY - coinH - 4}
+	spinButton  = button{panelX, betRowY, panelW - autoW - 4, lineRowY + buttonH - betRowY - coinH - 4}
+	autoButton  = button{panelX + panelW - autoW, betRowY, autoW, lineRowY + buttonH - betRowY - coinH - 4}
 	coinButton  = button{panelX, lineRowY + buttonH - coinH, panelW - resetW - 4, coinH}
 	resetButton = button{panelX + panelW - resetW, lineRowY + buttonH - coinH, resetW, coinH}
 )
@@ -200,6 +205,14 @@ func (g *Game) Update() error {
 }
 
 func (g *Game) updatePlay() {
+	// Auto spin can be turned on or off at any time, even in mid spin.
+	if pressed(ebiten.KeyA) || inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) && autoButton.hit(ebiten.CursorPosition()) {
+		g.auto = !g.auto
+		g.snd.play(g.snd.click)
+	}
+	if pressed(ebiten.KeyEscape) {
+		g.auto = false
+	}
 	if g.spinning {
 		g.advanceReels()
 		return
@@ -237,6 +250,27 @@ func (g *Game) updatePlay() {
 			g.spin()
 		}
 		return
+	}
+
+	// Auto spin plays the next spin by itself, after a pause to show the
+	// last result, until it is turned off, a feature is won or the credits
+	// run short.
+	if g.auto {
+		pause := 35
+		switch {
+		case g.link.show:
+			pause = 200
+		case g.win > 0:
+			pause = 100
+		}
+		switch {
+		case g.m.Credits < g.m.TotalBet():
+			g.auto = false
+			g.message = "AUTO SPIN STOPPED - NOT ENOUGH CREDITS"
+		case g.ticks-g.stopTick > pause:
+			g.spin()
+			return
+		}
 	}
 
 	if click {
@@ -426,6 +460,10 @@ func (g *Game) advanceReels() {
 	case g.win > 0:
 		g.snd.play(g.snd.win)
 	}
+	// A feature turns auto spin off; it has to be started again by hand.
+	if g.result.FreeSpinsWon > 0 || g.result.LinkStarted {
+		g.auto = false
+	}
 	if g.result.LinkStarted {
 		g.startLink()
 	}
@@ -505,13 +543,14 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"UP / DOWN", "change the bet per line"},
 		{"LEFT / RIGHT", "change the number of lines"},
 		{"M", "bet the maximum"},
+		{"A", "auto spin on or off"},
 		{"C", "insert a coin for more credits"},
 		{"R", "reset to a new game"},
 		{"S", "sound on or off"},
 		{"ESC", "back to the menu"},
 	}
 	for i, k := range keys {
-		y := 304 + float64(i)*23
+		y := 300 + float64(i)*22
 		drawText(screen, k[0], screenW/2-70, y, 17, lightRed, alignEnd, alignStart)
 		drawText(screen, k[1], screenW/2-45, y, 17, white, alignStart, alignStart)
 	}
@@ -599,7 +638,17 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	fillRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, green)
 	frameRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, 2, lightGreen)
-	drawText(screen, spinLabel, spinButton.x+spinButton.w/2, spinButton.y+spinButton.h/2, 30, white, alignCenter, alignCenter)
+	spinSize := 30.0
+	if len(spinLabel) > 4 {
+		spinSize = 20
+	}
+	drawText(screen, spinLabel, spinButton.x+spinButton.w/2, spinButton.y+spinButton.h/2, spinSize, white, alignCenter, alignCenter)
+
+	autoLabel := "SPIN"
+	if g.auto {
+		autoLabel = "ON"
+	}
+	drawButton(screen, autoButton, g.auto, false, 13, "AUTO", autoLabel)
 
 	fillRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, gold)
 	frameRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, 2, yellow)
@@ -614,7 +663,7 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	if !g.snd.on {
 		sound = "OFF"
 	}
-	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    C coin    R reset    S sound %s    ESC menu", sound)
+	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    A auto    C coin    R reset    S sound %s    ESC menu", sound)
 	drawText(screen, hint, screenW/2, 550, 11, lightGray, alignCenter, alignStart)
 }
 
