@@ -15,7 +15,7 @@ type sounds struct {
 	ctx *audio.Context
 	on  bool
 
-	start, stop, win, bigWin, bye []byte
+	click, start, stop, win, bigWin, bye []byte
 }
 
 func newSounds() *sounds {
@@ -23,6 +23,7 @@ func newSounds() *sounds {
 
 	s.start = append(tone(330, 40, 0.2, true), tone(440, 60, 0.2, true)...)
 	s.stop = tone(110, 70, 0.4, true)
+	s.click = tone(660, 30, 0.15, true)
 
 	for _, f := range []float64{523, 659, 784} {
 		s.win = append(s.win, tone(f, 110, 0.25, true)...)

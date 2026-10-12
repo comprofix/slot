@@ -57,7 +57,7 @@ func TestWindow(t *testing.T) {
 		n := len(strip)
 		for stop := range strip {
 			w := Window(reel, stop)
-			want := [3]Symbol{strip[(stop+1)%n], strip[stop], strip[(stop+n-1)%n]}
+			want := [Rows]Symbol{strip[(stop+1)%n], strip[stop], strip[(stop+n-1)%n]}
 			if w != want {
 				t.Fatalf("Window(%d, %d) = %v, want %v", reel, stop, w, want)
 			}
@@ -65,46 +65,87 @@ func TestWindow(t *testing.T) {
 	}
 }
 
+func TestPaylines(t *testing.T) {
+	if len(Paylines) != 25 {
+		t.Fatalf("%d paylines, want 25", len(Paylines))
+	}
+	seen := map[[Reels]int]int{}
+	for i, line := range Paylines {
+		for _, row := range line {
+			if row < Top || row > Bottom {
+				t.Errorf("payline %d has row %d", i+1, row)
+			}
+		}
+		if j, ok := seen[line]; ok {
+			t.Errorf("paylines %d and %d are the same", j+1, i+1)
+		}
+		seen[line] = i
+	}
+	if got := LineChoices[len(LineChoices)-1]; got != len(Paylines) {
+		t.Errorf("largest line choice is %d, want %d", got, len(Paylines))
+	}
+}
+
+// Every spin's result should agree with the grid it reports, line by line.
 func TestSpinAccounting(t *testing.T) {
 	m := New(1, 2)
-	m.SetBet(MaxBet)
-	for range 10000 {
-		if m.Credits == 0 {
-			m.Credits = StartCredits
-		}
-		m.SetBet(MaxBet)
-		before, bet := m.Credits, m.Bet
+	for n := range 20000 {
+		m.Credits = StartCredits
+		m.Lines = LineChoices[n%len(LineChoices)]
+		m.BetPerLine = BetChoices[n/len(LineChoices)%len(BetChoices)]
+		before := m.Credits
+
 		r, ok := m.Spin()
 		if !ok {
-			t.Fatalf("Spin refused with %d credits and bet %d", before, bet)
-		}
-		pay, matched := Evaluate(r.Line)
-		if r.Win != pay*bet || r.Matched != matched {
-			t.Fatalf("result %+v does not match Evaluate = %d, %d at bet %d", r, pay, matched, bet)
-		}
-		if m.Credits != before-bet+r.Win {
-			t.Fatalf("credits = %d, want %d", m.Credits, before-bet+r.Win)
+			t.Fatalf("Spin refused with %d credits and bet %d", before, m.TotalBet())
 		}
 		for i, stop := range r.Stops {
-			if Strips[i][stop] != r.Line[i] {
-				t.Fatalf("reel %d stop %d shows %v, result says %v", i, stop, Strips[i][stop], r.Line[i])
+			if r.Grid[i] != Window(i, stop) {
+				t.Fatalf("reel %d grid %v does not match stop %d", i, r.Grid[i], stop)
 			}
+		}
+
+		var wins []LineWin
+		total := 0
+		for l := range m.Lines {
+			var line [Reels]Symbol
+			for i, row := range Paylines[l] {
+				line[i] = r.Grid[i][row]
+			}
+			if pay, matched := Evaluate(line); pay > 0 {
+				wins = append(wins, LineWin{l, line[0], matched, pay * m.BetPerLine})
+				total += pay * m.BetPerLine
+			}
+		}
+		if len(wins) != len(r.Wins) {
+			t.Fatalf("%d winning lines, want %d", len(r.Wins), len(wins))
+		}
+		for i := range wins {
+			if r.Wins[i] != wins[i] {
+				t.Fatalf("win %d = %+v, want %+v", i, r.Wins[i], wins[i])
+			}
+		}
+		if r.Win != total || m.Credits != before-m.TotalBet()+total {
+			t.Fatalf("win %d and credits %d, want %d and %d", r.Win, m.Credits, total, before-m.TotalBet()+total)
 		}
 	}
 }
 
-// A long run of real spins should pay back close to the calculated RTP.
+// A long run of real spins on all lines should pay back close to the
+// calculated RTP.
 func TestSpinReturn(t *testing.T) {
-	const spins = 4_000_000
+	const spins = 1_000_000
 	m := New(3, 4)
-	won := 0
+	m.Lines = len(Paylines)
+	bet, won := 0, 0
 	for range spins {
 		m.Credits = StartCredits
 		r, _ := m.Spin()
+		bet += m.TotalBet()
 		won += r.Win
 	}
-	got := float64(won) / spins
-	t.Logf("paid back %.2f%% over %d spins", got*100, spins)
+	got := float64(won) / float64(bet)
+	t.Logf("paid back %.2f%% over %d spins of %d lines", got*100, spins, m.Lines)
 	if math.Abs(got-RTP()) > 0.02 {
 		t.Errorf("paid back %v, want about %v", got, RTP())
 	}
@@ -112,28 +153,12 @@ func TestSpinReturn(t *testing.T) {
 
 func TestSpinNeedsCredits(t *testing.T) {
 	m := New(1, 2)
-	m.Credits = 0
+	m.Lines, m.BetPerLine = 25, 20
+	m.Credits = m.TotalBet() - 1
 	if _, ok := m.Spin(); ok {
-		t.Error("Spin succeeded with no credits")
+		t.Error("Spin succeeded with too few credits")
 	}
-	if m.Credits != 0 {
-		t.Errorf("credits = %d after refused spin, want 0", m.Credits)
-	}
-}
-
-func TestSetBet(t *testing.T) {
-	m := New(1, 2)
-	for _, tt := range []struct{ credits, bet, want int }{
-		{100, 0, 1},
-		{100, 2, 2},
-		{100, 9, MaxBet},
-		{2, 3, 2},
-		{0, 3, 1},
-	} {
-		m.Credits = tt.credits
-		m.SetBet(tt.bet)
-		if m.Bet != tt.want {
-			t.Errorf("SetBet(%d) with %d credits = %d, want %d", tt.bet, tt.credits, m.Bet, tt.want)
-		}
+	if m.Credits != m.TotalBet()-1 {
+		t.Errorf("credits = %d after refused spin, want %d", m.Credits, m.TotalBet()-1)
 	}
 }
