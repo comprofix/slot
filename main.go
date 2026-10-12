@@ -478,7 +478,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"Four or five in a row pay much more. Cherries pay from two.",
 		"A win on a line is multiplied by the bet per line.",
 		"The joker is wild on reels 2 to 5 and stands in for any symbol.",
-		"Three or more dice anywhere win free spins, with all wins tripled.",
+		"Three or more dice anywhere win free spins, with all wins doubled.",
 	}
 	for i, l := range lines {
 		drawText(screen, l, screenW/2-280, 92+float64(i)*25, 16, white, alignStart, alignStart)

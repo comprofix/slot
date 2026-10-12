@@ -76,11 +76,11 @@ const (
 // symbol comes twice within three stops, so a reel never shows two of the
 // same.
 var Strips = [Reels][]Symbol{
-	{ac, tn, be, pl, ba, ch, qn, pl, sv, ba, ac, jk, ch, qn, jk, tn, qn, kg, ch, do, be, kg, tn, lk, ac, sv, jk, ac, tn, sc, sv, be, pl, qn, lk, kg},
-	{qn, be, jk, kg, sc, ch, lk, sv, ac, pl, ch, ac, jk, ba, tn, jk, pl, qn, tn, do, kg, wd, qn, ch, be, kg, qn, lk, sv, do, sc, jk, wd, ba, tn, ac},
-	{ac, kg, qn, tn, jk, ba, lk, jk, ch, wd, kg, sv, wd, qn, be, ba, ch, wd, ac, ch, tn, ac, do, pl, tn, qn, sc, pl, jk, tn, be, lk, ch, qn, kg, jk},
-	{kg, pl, ac, tn, ch, be, jk, ac, kg, sc, jk, ba, qn, do, wd, tn, ch, qn, jk, pl, do, tn, qn, lk, sv, wd, ba, kg, ch, lk, jk, ac, sc, pl, tn, be},
-	{jk, tn, pl, do, lk, pl, jk, kg, ac, ch, qn, wd, kg, tn, qn, ac, tn, be, ch, qn, kg, lk, pl, ac, ch, jk, ba, wd, tn, sv, be, wd, qn, do, sc, ba},
+	{ch, be, kg, tn, ac, jk, ba, ch, tn, kg, ac, sv, ba, ch, pl, sc, tn, jk, pl, lk, qn, jk, sv, ac, qn, lk, jk, do, be, qn, kg, tn, ch, be, kg, ac},
+	{jk, ch, wd, jk, kg, pl, tn, qn, ac, sc, be, sv, wd, ac, qn, jk, ch, tn, wd, qn, lk, pl, tn, kg, ch, sc, do, ac, lk, jk, sv, kg, ba, do, ch, be},
+	{qn, jk, wd, pl, jk, tn, kg, qn, tn, jk, kg, wd, ch, jk, do, lk, ac, ch, lk, sc, sv, kg, do, ba, be, wd, ac, tn, qn, pl, ch, jk, kg, ac, tn, be},
+	{tn, kg, qn, sc, jk, ac, qn, ch, pl, be, jk, ac, wd, sv, tn, lk, kg, qn, sc, ac, jk, ch, tn, qn, lk, ba, kg, tn, be, kg, ch, sv, jk, pl, wd, do},
+	{wd, kg, tn, sc, ch, ac, tn, be, qn, jk, kg, lk, pl, ac, jk, kg, tn, do, ac, ba, tn, ch, kg, do, ba, qn, pl, be, qn, ch, lk, sv, wd, kg, tn, jk},
 }
 
 // Row numbers within a reel's window.
@@ -152,7 +152,7 @@ var (
 )
 
 // FreeSpinMultiplier multiplies every win during free spins.
-const FreeSpinMultiplier = 3
+const FreeSpinMultiplier = 2
 
 // Evaluate returns the payout per credit bet for the symbols along one
 // payline, the symbol that won, and how many reels (counted from the left)

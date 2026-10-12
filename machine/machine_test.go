@@ -151,7 +151,7 @@ func TestPaylines(t *testing.T) {
 }
 
 // Every spin's result should agree with the grid it reports, line by line,
-// and free spins should cost nothing and pay triple.
+// and free spins should cost nothing and pay double.
 func TestSpinAccounting(t *testing.T) {
 	m := New(1, 2)
 	freeSpins := 0

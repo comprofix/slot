@@ -81,7 +81,7 @@ line is shown in turn.
 
 Three, four or five dice anywhere on the reels pay 5, 20 or 400 times the
 total bet and win 15, 20 or 25 free spins. Free spins cost nothing, play by
-themselves at the bet that won them, and pay every win three times over.
+themselves at the bet that won them, and pay every win twice over.
 More dice during free spins win more free spins.
 
 ## Layout
@@ -98,7 +98,7 @@ More dice during free spins win more free spins.
 
 The odds come from the reel strips, paytable and free spin rules in
 `machine/machine.go`. The machine pays back about 92% of what is bet over
-the long run, however many lines are played: about 47% from line wins and
+the long run, however many lines are played: about 55% from line wins and
 the rest from the dice and free spins. Free spins come up about once in 82
 spins. Run the tests to recalculate these after changing the rules:
 
