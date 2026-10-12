@@ -25,7 +25,7 @@ const (
 	Bar
 	Seven
 	Dollar
-	Wild    // joker: stands in for any paying symbol
+	Wild    // joker: stands in for any paying symbol and doubles the win
 	Scatter // dice: three or more anywhere award free spins
 	Link    // poker chip: will start the link feature, which is not built yet
 	NumSymbols
@@ -76,11 +76,11 @@ const (
 // symbol comes twice within three stops, so a reel never shows two of the
 // same.
 var Strips = [Reels][]Symbol{
-	{ch, be, kg, tn, ac, jk, ba, ch, tn, kg, ac, sv, ba, ch, pl, sc, tn, jk, pl, lk, qn, jk, sv, ac, qn, lk, jk, do, be, qn, kg, tn, ch, be, kg, ac},
-	{jk, ch, wd, jk, kg, pl, tn, qn, ac, sc, be, sv, wd, ac, qn, jk, ch, tn, wd, qn, lk, pl, tn, kg, ch, sc, do, ac, lk, jk, sv, kg, ba, do, ch, be},
-	{qn, jk, wd, pl, jk, tn, kg, qn, tn, jk, kg, wd, ch, jk, do, lk, ac, ch, lk, sc, sv, kg, do, ba, be, wd, ac, tn, qn, pl, ch, jk, kg, ac, tn, be},
-	{tn, kg, qn, sc, jk, ac, qn, ch, pl, be, jk, ac, wd, sv, tn, lk, kg, qn, sc, ac, jk, ch, tn, qn, lk, ba, kg, tn, be, kg, ch, sv, jk, pl, wd, do},
-	{wd, kg, tn, sc, ch, ac, tn, be, qn, jk, kg, lk, pl, ac, jk, kg, tn, do, ac, ba, tn, ch, kg, do, ba, qn, pl, be, qn, ch, lk, sv, wd, kg, tn, jk},
+	{tn, ch, jk, kg, ch, jk, lk, kg, pl, qn, ac, ch, kg, tn, sv, pl, qn, ac, be, ba, qn, kg, tn, sc, do, tn, lk, ch, jk, tn, ac, be, ba, ch, qn, jk},
+	{jk, tn, pl, do, sc, be, kg, sv, jk, lk, ac, qn, wd, jk, kg, ch, ba, qn, tn, kg, ac, tn, ch, sv, tn, pl, qn, wd, jk, sc, ch, be, ac, qn, kg, lk},
+	{sv, kg, lk, jk, be, qn, jk, tn, ch, qn, sc, ch, ac, qn, kg, tn, jk, ac, kg, jk, do, ac, ba, kg, qn, pl, tn, jk, kg, ch, qn, jk, wd, be, pl, lk},
+	{ch, lk, pl, tn, jk, kg, ba, be, wd, sc, ac, qn, do, sv, ch, qn, ac, ch, pl, ba, tn, kg, jk, ac, tn, ba, wd, ac, sv, lk, sc, qn, jk, kg, pl, be},
+	{wd, sv, pl, ac, ch, jk, ba, ch, wd, pl, be, jk, qn, pl, be, sc, qn, do, tn, ba, ac, kg, lk, qn, jk, be, kg, ac, tn, sv, ch, kg, tn, ba, do, lk},
 }
 
 // Row numbers within a reel's window.
@@ -127,10 +127,10 @@ var (
 )
 
 // Pays is the payout per credit bet on a line, by symbol and by how many of
-// it run along the payline from the left reel. Only cherries pay for two;
+// it run along the payline from the left reel. A few symbols pay for two;
 // nothing pays for one.
 var Pays = [NumSymbols][Reels + 1]int{
-	Ten:    {0, 0, 0, 5, 20, 100},
+	Ten:    {0, 0, 2, 5, 20, 100},
 	Jack:   {0, 0, 0, 5, 20, 100},
 	Queen:  {0, 0, 0, 5, 25, 100},
 	King:   {0, 0, 0, 5, 25, 125},
@@ -139,8 +139,8 @@ var Pays = [NumSymbols][Reels + 1]int{
 	Plum:   {0, 0, 0, 15, 75, 250},
 	Bell:   {0, 0, 0, 20, 100, 400},
 	Bar:    {0, 0, 0, 25, 125, 500},
-	Seven:  {0, 0, 0, 40, 200, 1000},
-	Dollar: {0, 0, 0, 100, 500, 5000},
+	Seven:  {0, 0, 2, 40, 200, 1000},
+	Dollar: {0, 0, 5, 100, 500, 5000},
 }
 
 // Scatters pay wherever they land, not along paylines. By how many are
@@ -154,9 +154,14 @@ var (
 // FreeSpinMultiplier multiplies every win during free spins.
 const FreeSpinMultiplier = 2
 
+// WildMultiplier multiplies a line win that a wild helps to make. Several
+// wilds in one win still multiply it only once.
+const WildMultiplier = 2
+
 // Evaluate returns the payout per credit bet for the symbols along one
 // payline, the symbol that won, and how many reels (counted from the left)
-// make up the win. Wilds count as the symbol the line starts with.
+// make up the win. Wilds count as the symbol the line starts with, and a
+// win with a wild in it is multiplied by WildMultiplier.
 func Evaluate(line [Reels]Symbol) (pay int, sym Symbol, matched int) {
 	// The win belongs to the first symbol that is not a wild.
 	sym = Wild
@@ -169,13 +174,19 @@ func Evaluate(line [Reels]Symbol) (pay int, sym Symbol, matched int) {
 	if !sym.Paying() {
 		return 0, 0, 0
 	}
-	run := 0
+	run, wild := 0, false
 	for run < Reels && (line[run] == sym || line[run] == Wild) {
+		if line[run] == Wild {
+			wild = true
+		}
 		run++
 	}
 	pay = Pays[sym][run]
 	if pay == 0 {
 		return 0, 0, 0
+	}
+	if wild {
+		pay *= WildMultiplier
 	}
 	return pay, sym, run
 }
@@ -205,16 +216,22 @@ func count(reel int, sym Symbol) int {
 func lineReturn() float64 {
 	total := 0.0
 	for sym := Ten; sym <= Dollar; sym++ {
-		// lead is the chance the line starts with a run of at least n.
+		// lead is the chance the line starts with a run of at least n, and
+		// plain the chance it does so without the help of a wild.
 		lead := float64(count(0, sym)) / float64(len(Strips[0]))
+		plain := lead
 		for n := 1; n <= Reels; n++ {
-			exactly := lead
+			// The run goes on if the next reel shows the symbol or a wild.
+			var symNext, wildNext float64
 			if n < Reels {
-				next := float64(count(n, sym)+count(n, Wild)) / float64(len(Strips[n]))
-				exactly *= 1 - next
-				lead *= next
+				stops := float64(len(Strips[n]))
+				symNext = float64(count(n, sym)) / stops
+				wildNext = float64(count(n, Wild)) / stops
 			}
-			total += float64(Pays[sym][n]) * exactly
+			ends := 1 - symNext - wildNext
+			total += float64(Pays[sym][n]) * ends * (plain + WildMultiplier*(lead-plain))
+			lead *= symNext + wildNext
+			plain *= symNext
 		}
 	}
 	return total
@@ -292,6 +309,7 @@ type LineWin struct {
 	Line    int    // index into Paylines
 	Symbol  Symbol // the winning symbol
 	Matched int    // winning reels, counted from the left
+	Doubled bool   // a wild helped, multiplying the win
 	Win     int    // credits won
 }
 
@@ -372,7 +390,8 @@ func (m *Machine) Spin() (Result, bool) {
 		}
 		if pay, sym, matched := Evaluate(line); pay > 0 {
 			win := pay * m.BetPerLine * multiplier
-			r.Wins = append(r.Wins, LineWin{Line: l, Symbol: sym, Matched: matched, Win: win})
+			doubled := pay > Pays[sym][matched]
+			r.Wins = append(r.Wins, LineWin{Line: l, Symbol: sym, Matched: matched, Doubled: doubled, Win: win})
 			r.Win += win
 		}
 	}

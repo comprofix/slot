@@ -59,7 +59,8 @@ You start with 1000 credits. The INSERT COIN button adds 100 more whenever
 you want them, and RESET starts a new game. Each payline is a path across
 the five reels.
 Three or more of a symbol in a row along a line, starting from the left
-reel, win; four or five in a row pay much more. Cherries also pay for two.
+reel, win; four or five in a row pay much more. The 10, cherry, seven and
+dollar also pay for two.
 A win on a line is multiplied by the bet per line, and the wins on all the
 lines played are added together.
 
@@ -73,7 +74,7 @@ line is shown in turn.
 |---|---|
 | 10, J, Q, K, A | Low-paying line symbols |
 | Cherry, plum, bell, BAR, seven, dollar | Higher-paying line symbols |
-| Joker | Wild: stands in for any of the symbols above. Reels 2 to 5 only |
+| Joker | Wild: stands in for any of the symbols above and doubles the win. Reels 2 to 5 only |
 | Dice | Scatter: three or more anywhere pay a prize and win free spins |
 | Poker chip | Will start the link feature, which is not built yet. For now it does nothing |
 

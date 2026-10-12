@@ -36,14 +36,23 @@ func TestEvaluate(t *testing.T) {
 		{[Reels]Symbol{p, p, s, p, p}, 0, 0, 0},
 		{[Reels]Symbol{p, s, s, s, s}, 0, 0, 0},
 
-		// Wilds stand in for the symbol the line starts with.
-		{[Reels]Symbol{b, w, b, p, p}, 25, b, 3},
-		{[Reels]Symbol{b, w, w, w, b}, 500, b, 5},
-		{[Reels]Symbol{b, w, w, w, w}, 500, b, 5},
-		{[Reels]Symbol{c, w, p, p, p}, 2, c, 2},
+		// Wilds stand in for the symbol the line starts with, and double the
+		// win however many of them are in it.
+		{[Reels]Symbol{b, w, b, p, p}, 50, b, 3},
+		{[Reels]Symbol{b, w, w, w, b}, 1000, b, 5},
+		{[Reels]Symbol{b, w, w, w, w}, 1000, b, 5},
+		{[Reels]Symbol{c, w, p, p, p}, 4, c, 2},
 		{[Reels]Symbol{p, w, c, c, c}, 0, 0, 0},
-		{[Reels]Symbol{w, w, s, s, p}, 200, s, 4},
+		{[Reels]Symbol{w, w, s, s, p}, 400, s, 4},
 		{[Reels]Symbol{w, w, w, w, w}, 0, 0, 0},
+		{[Reels]Symbol{b, b, b, p, w}, 25, b, 3}, // a wild outside the win
+
+		// The ten, cherry, seven and dollar pay for a pair.
+		{[Reels]Symbol{t0, t0, a, t0, t0}, 2, t0, 2},
+		{[Reels]Symbol{s, s, p, p, p}, 2, s, 2},
+		{[Reels]Symbol{d, d, p, p, p}, 5, d, 2},
+		{[Reels]Symbol{d, w, p, p, p}, 10, d, 2},
+		{[Reels]Symbol{a, a, p, p, p}, 0, 0, 0},
 
 		// Scatters and chips never win along a line, with or without wilds.
 		{[Reels]Symbol{x, x, x, x, x}, 0, 0, 0},
@@ -197,7 +206,7 @@ func TestSpinAccounting(t *testing.T) {
 			}
 			if pay, sym, matched := Evaluate(line); pay > 0 {
 				win := pay * m.BetPerLine * multiplier
-				wins = append(wins, LineWin{l, sym, matched, win})
+				wins = append(wins, LineWin{l, sym, matched, pay > Pays[sym][matched], win})
 				total += win
 			}
 		}

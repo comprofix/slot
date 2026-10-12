@@ -475,9 +475,9 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"A spin costs the bet per line times the number of lines.",
 		"Each line is a path across the five reels, read left to right.",
 		"Three or more of a symbol in a row from the left reel win.",
-		"Four or five in a row pay much more. Cherries pay from two.",
+		"Four or five in a row pay much more. A few symbols pay for two.",
 		"A win on a line is multiplied by the bet per line.",
-		"The joker is wild on reels 2 to 5 and stands in for any symbol.",
+		"The joker is wild on reels 2 to 5 and doubles any win it helps make.",
 		"Three or more dice anywhere win free spins, with all wins doubled.",
 	}
 	for i, l := range lines {
@@ -579,6 +579,9 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	message := g.message
 	if win != nil && len(g.result.Wins) > 1 {
 		message += fmt.Sprintf("   LINE %d PAYS %d", win.Line+1, win.Win)
+	}
+	if win != nil && win.Doubled {
+		message += fmt.Sprintf("   JOKER x%d", machine.WildMultiplier)
 	}
 	drawText(screen, message, reelsX+reelsW/2, 420, 16, lightRed, alignCenter, alignStart)
 
@@ -713,57 +716,45 @@ func (g *Game) chipLabel(p machine.LinkPrize) string {
 func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 	const (
 		top     = reelsY - 4
-		rowsY   = top + 26
+		rowsY   = top + 42
 		rowStep = 22
 		icon    = 0.22
 	)
 
-	// The right-hand edge of the column for a run of n symbols. Columns for
-	// longer runs are wider, as their payouts have more digits.
-	edges := [machine.Reels + 1]float64{3: 104, 4: 58, 5: 0}
+	// How far the right-hand edge of the column for a run of n symbols is
+	// from the edge of the panel. Columns for longer runs are wider, as
+	// their payouts have more digits.
+	edges := [machine.Reels + 1]float64{2: 126, 3: 91, 4: 49, 5: 0}
 	col := func(n int) float64 { return panelX + panelW - 12 - edges[n] }
-	pays := func(sym machine.Symbol, n int) string {
-		return fmt.Sprint(machine.Pays[sym][n] * g.m.BetPerLine)
-	}
 
 	frameRect(screen, panelX, top, panelW, panelH, 2, magenta)
-	drawText(screen, "PAYS", panelX+12, top+6, 16, yellow, alignStart, alignStart)
-	for n := 3; n <= machine.Reels; n++ {
-		drawText(screen, fmt.Sprintf("x%d", n), col(n), top+6, 16, yellow, alignEnd, alignStart)
-	}
-
-	// row draws one line of the table, lit if it is the win, and returns
-	// the height of its centre.
-	row := func(i int, sym machine.Symbol, icons int, lit bool) float64 {
-		cy := float64(rowsY + i*rowStep + rowStep/2)
-		if lit {
-			fillRect(screen, panelX+3, cy-rowStep/2, panelW-6, rowStep, darkGray)
-		}
-		for j := range icons {
-			drawSymbol(screen, sym, panelX+22+float64(j)*26, cy, icon)
-		}
-		return cy
+	drawText(screen, "PAYS", panelX+panelW/2, top+5, 15, yellow, alignCenter, alignStart)
+	for n := 2; n <= machine.Reels; n++ {
+		drawText(screen, fmt.Sprintf("x%d", n), col(n), top+25, 12, yellow, alignEnd, alignStart)
 	}
 
 	// The symbols are listed from the best paying down.
 	i := 0
 	for sym := machine.Dollar; sym >= machine.Ten; sym-- {
-		lit := win != nil && win.Symbol == sym && win.Matched >= 3
-		cy := row(i, sym, 1, lit)
-		for n := 3; n <= machine.Reels; n++ {
+		cy := float64(rowsY + i*rowStep + rowStep/2)
+		lit := win != nil && win.Symbol == sym
+		if lit {
+			fillRect(screen, panelX+3, cy-rowStep/2, panelW-6, rowStep, darkGray)
+		}
+		drawSymbol(screen, sym, panelX+22, cy, icon)
+		for n := 2; n <= machine.Reels; n++ {
+			pay := machine.Pays[sym][n] * g.m.BetPerLine
+			if pay == 0 {
+				continue
+			}
 			c := color.Color(white)
 			if lit && n == win.Matched {
 				c = yellow
 			}
-			drawText(screen, pays(sym, n), col(n), cy, 13, c, alignEnd, alignCenter)
+			drawText(screen, fmt.Sprint(pay), col(n), cy, 12, c, alignEnd, alignCenter)
 		}
 		i++
 	}
-	// Cherries are the only symbol to pay for a run of two.
-	lit := win != nil && win.Symbol == machine.Cherry && win.Matched == 2
-	cy := row(i, machine.Cherry, 2, lit)
-	drawText(screen, pays(machine.Cherry, 2), col(machine.Reels), cy, 13, white, alignEnd, alignCenter)
-	i++
 
 	y := float64(rowsY + i*rowStep + 4)
 	note := fmt.Sprintf("AT %d PER LINE", g.m.BetPerLine)
@@ -771,7 +762,7 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 
 	bet := g.m.TotalBet()
 	notes := []string{
-		"JOKER: WILD ON REELS 2-5",
+		fmt.Sprintf("JOKER: WILD ON REELS 2-5, PAYS x%d", machine.WildMultiplier),
 		fmt.Sprintf("3+ DICE: FREE SPINS, WINS x%d", machine.FreeSpinMultiplier),
 		fmt.Sprintf("DICE PAY %d / %d / %d",
 			machine.ScatterPays[3]*bet, machine.ScatterPays[4]*bet, machine.ScatterPays[5]*bet),
