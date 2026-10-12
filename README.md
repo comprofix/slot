@@ -76,32 +76,74 @@ line is shown in turn.
 | Cherry, plum, bell, BAR, seven, dollar | Higher-paying line symbols |
 | Joker | Wild: stands in for any of the symbols above and doubles the win. Reels 2 to 5 only |
 | Dice | Scatter: three or more anywhere pay a prize and win free spins |
-| Poker chip | Will start the link feature, which is not built yet. For now it does nothing |
+| Poker chip | Six or more anywhere start the link feature |
 
 ### Free spins
 
-Three, four or five dice anywhere on the reels pay 5, 20 or 400 times the
-total bet and win 15, 20 or 25 free spins. Free spins cost nothing, play by
+Three, four or five dice anywhere on the reels pay 2, 10 or 60 times the
+total bet and win 8, 12 or 20 free spins. Free spins cost nothing, play by
 themselves at the bet that won them, and pay every win twice over.
 More dice during free spins win more free spins.
 
+### Link feature
+
+The chips sit in stacks of three on the reels, and each one that lands
+shows what it carries. Six or more anywhere lock in place and start the
+link feature:
+
+1. Everything else clears and you get three respins.
+2. On each respin any empty position may land a chip, which locks too and
+   puts the respins back to three.
+3. When the respins run out, or all fifteen positions are full, every chip
+   is paid.
+
+It can start during free spins as well.
+
+| A chip can carry | Worth |
+|---|---|
+| Credits | 1 to 10 times the total bet |
+| MINI | 40 times the total bet |
+| MINOR | 400 times the total bet |
+| MAJOR | The major pot |
+
+The GRAND is not on a chip: it is paid for filling all fifteen positions.
+
+The four jackpots are shown across the top in dollars, at 100 credits to
+the dollar. MINI and MINOR follow the bet. MAJOR and GRAND are pots that
+start at $5,000 and $20,000 and grow with every paid spin, by 1% and 0.5%
+of the bet; they pay the same whatever the bet, and go back to their
+starting amounts when won. To keep small bets from having the same shot at
+them as large ones, a MAJOR chip and the chip that would complete the grid
+both land more often the more you bet. The pots start afresh each time the
+game is opened or reset.
+
 ## Layout
 
-- `machine/` holds the rules: reel strips, paylines, paytable, free spins and
-  credits.
+- `machine/` holds the rules: reel strips, paylines, paytable, free spins, the
+  link feature, credits and the odds.
   It has no graphics and is covered by tests.
 - `main.go` has the screens, buttons, input and reel animation.
+- `linkview.go` shows the link feature and the jackpot meters.
 - `symbols.go` draws the symbols from simple shapes.
 - `draw.go` has the palette and drawing helpers.
 - `sound.go` generates the sound effects.
 
 ## Odds
 
-The odds come from the reel strips, paytable and free spin rules in
-`machine/machine.go`. The machine pays back about 92% of what is bet over
-the long run, however many lines are played: about 55% from line wins and
-the rest from the dice and free spins. Free spins come up about once in 82
-spins. Run the tests to recalculate these after changing the rules:
+The odds come from the reel strips and rules in `machine/`. At a bet of 25
+credits the machine pays back about 92% of what is bet over the long run:
+
+| From | Share of what is bet |
+|---|---|
+| Line wins | 53% |
+| Dice prizes and free spins | 20% |
+| Link chips, with MINI and MINOR | 15% |
+| MAJOR and GRAND pots | 4% |
+
+Free spins come up about once in 68 spins and the link feature about once
+in 105. The return is the same at every bet apart from the GRAND, which
+lifts it to about 93% at the smallest bet. Run the tests to recalculate
+all of this after changing the rules:
 
 ```
 go test -v ./machine/

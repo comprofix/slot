@@ -83,6 +83,8 @@ type Game struct {
 	showLines int // ticks left to show the lines being played
 
 	free freeSpins
+	link linkView
+	spun bool // a spin has been played, so the chips showing were dealt
 
 	byeTicks int
 }
@@ -97,7 +99,7 @@ type freeSpins struct {
 }
 
 func newGame() *Game {
-	g := &Game{snd: newSounds(), rtp: machine.RTP()}
+	g := &Game{snd: newSounds(), rtp: machine.RTP(len(machine.Paylines))}
 	g.newMachine()
 	return g
 }
@@ -106,6 +108,8 @@ func (g *Game) newMachine() {
 	g.m = machine.New(rand.Uint64(), rand.Uint64())
 	g.credits = g.m.Credits
 	g.free = freeSpins{}
+	g.link = linkView{}
+	g.spun = false
 	g.clearWin()
 	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
 }
@@ -114,6 +118,7 @@ func (g *Game) newMachine() {
 func (g *Game) clearWin() {
 	g.result.Wins = nil
 	g.result.Scatters = 0
+	g.link = linkView{}
 	g.win = 0
 	g.message = ""
 }
@@ -208,12 +213,18 @@ func (g *Game) updatePlay() {
 		g.insertCoin()
 	}
 
+	// A link feature runs to its end before anything else can happen.
+	if g.linkBusy() {
+		g.updateLink(click && spinButton.hit(x, y))
+		return
+	}
+
 	// Free spins play themselves at the bet that won them, after a pause to
 	// show the last result. Pressing spin skips the pause.
 	if g.m.FreeSpins > 0 {
 		pause := 50
 		switch {
-		case g.result.FreeSpinsWon > 0:
+		case g.link.show, g.result.FreeSpinsWon > 0:
 			pause = 180
 		case g.win > 0:
 			pause = 110
@@ -339,6 +350,7 @@ func (g *Game) spin() {
 	}
 	g.clearWin()
 	g.result = res
+	g.spun = true
 	g.spinning = true
 	g.showLines = 0
 	g.credits = g.m.Credits - res.Win
@@ -414,6 +426,9 @@ func (g *Game) advanceReels() {
 	case g.win > 0:
 		g.snd.play(g.snd.win)
 	}
+	if g.result.LinkStarted {
+		g.startLink()
+	}
 }
 
 // shownWin is the winning line on display. The wins take turns, about a
@@ -479,9 +494,10 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"A win on a line is multiplied by the bet per line.",
 		"The joker is wild on reels 2 to 5 and doubles any win it helps make.",
 		"Three or more dice anywhere win free spins, with all wins doubled.",
+		"Six or more chips lock in place and respin for the jackpots.",
 	}
 	for i, l := range lines {
-		drawText(screen, l, screenW/2-280, 92+float64(i)*25, 16, white, alignStart, alignStart)
+		drawText(screen, l, screenW/2-280, 86+float64(i)*24, 16, white, alignStart, alignStart)
 	}
 
 	keys := [][2]string{
@@ -522,46 +538,21 @@ func (g *Game) drawAbout(screen *ebiten.Image) {
 }
 
 func (g *Game) drawPlay(screen *ebiten.Image) {
-	// While free spins are being played the title keeps count of them.
+	g.drawJackpots(screen)
 	inFree := g.free.active || g.m.FreeSpins > 0
-	if inFree {
-		title := fmt.Sprintf("FREE SPIN %d OF %d", g.free.played, g.free.total)
-		if g.free.played == 0 {
-			title = fmt.Sprintf("%d FREE SPINS", g.free.total)
-		}
-		drawText(screen, title, screenW/2, 22, 34, yellow, alignCenter, alignStart)
-		drawText(screen, fmt.Sprintf("ALL WINS x%d", machine.FreeSpinMultiplier), screenW/2, 62, 14, lightRed, alignCenter, alignStart)
-	} else {
-		drawText(screen, "POKER MACHINE", screenW/2, 24, 44, lightBlue, alignCenter, alignStart)
-	}
+	g.drawStatus(screen, inFree)
 
 	// The magenta frame shows through the gaps between the reels.
 	fillRect(screen, reelsX-5, reelsY-5, reelsW+10, reelsH+10, magenta)
-	for i := range g.reels {
-		g.drawReel(screen, i)
-	}
-
-	win := g.shownWin()
-	switch {
-	case win != nil:
-		drawPayline(screen, win.Line, 4)
-		for i := range win.Matched {
-			boxCell(screen, i, machine.Paylines[win.Line][i], lineColor(win.Line))
+	var win *machine.LineWin
+	if g.link.show {
+		g.drawLinkGrid(screen)
+	} else {
+		for i := range g.reels {
+			g.drawReel(screen, i)
 		}
-	case g.showLines > 0 && !g.spinning:
-		for l := range g.m.Lines {
-			drawPayline(screen, l, 2)
-		}
-	}
-	// Winning scatters flash wherever they landed.
-	if !g.spinning && g.result.FreeSpinsWon > 0 && g.ticks/15%2 == 0 {
-		for i, col := range g.result.Grid {
-			for row, sym := range col {
-				if sym == machine.Scatter {
-					boxCell(screen, i, row, white)
-				}
-			}
-		}
+		win = g.shownWin()
+		g.drawWins(screen, win)
 	}
 
 	g.drawPaytable(screen, win)
@@ -585,8 +576,8 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	drawText(screen, message, reelsX+reelsW/2, 420, 16, lightRed, alignCenter, alignStart)
 
-	// The bet cannot be changed while free spins are waiting.
-	locked := g.m.FreeSpins > 0
+	// The bet cannot be changed while a feature is being played.
+	locked := g.m.FreeSpins > 0 || g.linkBusy()
 	for i, n := range machine.BetChoices {
 		drawButton(screen, betButton(i), n == g.m.BetPerLine, locked, 11, fmt.Sprintf("PLAY %d", n), "PER LINE")
 	}
@@ -599,6 +590,8 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	spinLabel := "SPIN"
 	switch {
+	case g.linkBusy():
+		spinLabel = "RESPIN"
 	case locked:
 		spinLabel = "FREE SPIN"
 	case g.m.Credits == 0 && !g.spinning:
@@ -623,6 +616,32 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	hint := fmt.Sprintf("SPACE spin    UP/DOWN bet per line    LEFT/RIGHT lines    M max bet    C coin    R reset    S sound %s    ESC menu", sound)
 	drawText(screen, hint, screenW/2, 550, 11, lightGray, alignCenter, alignStart)
+}
+
+// drawWins marks what the last spin won over the reels: the payline on
+// show, or the lines being played after a change of bet.
+func (g *Game) drawWins(screen *ebiten.Image, win *machine.LineWin) {
+	switch {
+	case win != nil:
+		drawPayline(screen, win.Line, 4)
+		for i := range win.Matched {
+			boxCell(screen, i, machine.Paylines[win.Line][i], lineColor(win.Line))
+		}
+	case g.showLines > 0 && !g.spinning:
+		for l := range g.m.Lines {
+			drawPayline(screen, l, 2)
+		}
+	}
+	// Winning scatters flash wherever they landed.
+	if !g.spinning && g.result.FreeSpinsWon > 0 && g.ticks/15%2 == 0 {
+		for i, col := range g.result.Grid {
+			for row, sym := range col {
+				if sym == machine.Scatter {
+					boxCell(screen, i, row, white)
+				}
+			}
+		}
+	}
 }
 
 // boxCell outlines the cell at the given reel and row.
@@ -695,20 +714,42 @@ func (g *Game) drawReel(screen *ebiten.Image, i int) {
 		stop := ((int(base)+k)%n + n) % n
 		y := cy - (float64(k)-frac)*rowH
 		if strip[stop] == machine.Link {
-			drawChip(window, cx, y, reelScale, g.chipLabel(machine.LinkPrizeAt(i, stop)))
+			drawChip(window, cx, y, reelScale, g.chipLabel(g.chipAt(i, stop), g.m.TotalBet()))
 			continue
 		}
 		drawSymbol(window, strip[stop], cx, y, reelScale)
 	}
 }
 
-// chipLabel is the text on a link chip: a jackpot's name, or a credit value
-// that grows with the bet.
-func (g *Game) chipLabel(p machine.LinkPrize) string {
-	if p.Jackpot != "" {
-		return p.Jackpot
+// chipAt is what the chip at a reel stop shows. The chips the last spin
+// landed carry what they were dealt; any others, seen only as the reel
+// turns, are dressed up from a fixed list.
+func (g *Game) chipAt(reel, stop int) machine.Chip {
+	if g.spun {
+		n := len(machine.Strips[reel])
+		for row := range machine.Rows {
+			// Rows run top to bottom, against the order of the strip.
+			if stop == ((g.result.Stops[reel]+1-row)%n+n)%n {
+				return g.result.Chips[reel][row]
+			}
+		}
 	}
-	return fmt.Sprint(p.Bets * g.m.TotalBet())
+	return passingChips[(reel*5+stop)%len(passingChips)]
+}
+
+var passingChips = []machine.Chip{
+	{Bets: 1}, {Bets: 2}, {Bets: 1}, {Jackpot: machine.Mini}, {Bets: 3},
+	{Bets: 1}, {Bets: 5}, {Bets: 2}, {Jackpot: machine.Minor}, {Bets: 1},
+	{Bets: 10}, {Bets: 2}, {Jackpot: machine.Major},
+}
+
+// chipLabel is the text on a link chip: the name of its jackpot, or its
+// value in credits at the given total bet.
+func (g *Game) chipLabel(c machine.Chip, bet int) string {
+	if c.Jackpot != machine.NoJackpot {
+		return c.Jackpot.String()
+	}
+	return fmt.Sprint(g.m.ChipValue(c, bet))
 }
 
 // drawPaytable draws what each win pays at the current bet, picking out the
@@ -764,6 +805,7 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 	notes := []string{
 		fmt.Sprintf("JOKER: WILD ON REELS 2-5, PAYS x%d", machine.WildMultiplier),
 		fmt.Sprintf("3+ DICE: FREE SPINS, WINS x%d", machine.FreeSpinMultiplier),
+		fmt.Sprintf("%d+ CHIPS: LINK FEATURE", machine.LinkTrigger),
 		fmt.Sprintf("DICE PAY %d / %d / %d",
 			machine.ScatterPays[3]*bet, machine.ScatterPays[4]*bet, machine.ScatterPays[5]*bet),
 	}

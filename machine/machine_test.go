@@ -73,13 +73,27 @@ func TestEvaluate(t *testing.T) {
 func TestStrips(t *testing.T) {
 	for reel, strip := range Strips {
 		n := len(strip)
+		stacks := 0
 		for i, sym := range strip {
+			if sym == Link {
+				// Chips come in one stack of three.
+				if strip[(i+n-1)%n] != Link {
+					stacks++
+					if strip[(i+1)%n] != Link || strip[(i+2)%n] != Link || strip[(i+3)%n] == Link {
+						t.Errorf("reel %d: the chips at %d are not a stack of three", reel+1, i)
+					}
+				}
+				continue
+			}
 			if sym == strip[(i+1)%n] || sym == strip[(i+2)%n] {
 				t.Errorf("reel %d: %v comes twice within three stops at %d", reel+1, sym, i)
 			}
 		}
-		if count(reel, Scatter) == 0 || count(reel, Link) == 0 {
-			t.Errorf("reel %d is missing a scatter or a link chip", reel+1)
+		if stacks != 1 {
+			t.Errorf("reel %d has %d stacks of chips, want 1", reel+1, stacks)
+		}
+		if count(reel, Scatter) == 0 {
+			t.Errorf("reel %d has no scatter", reel+1)
 		}
 	}
 	if n := count(0, Wild); n != 0 {
@@ -93,11 +107,21 @@ func TestStrips(t *testing.T) {
 }
 
 func TestRTP(t *testing.T) {
-	got := RTP()
-	t.Logf("return to player %.2f%%: line wins %.2f%%, free spins 1 in %.0f",
-		got*100, lineReturn()*100, 1/FreeSpinOdds())
-	if math.Abs(got-0.92) > 0.005 {
-		t.Errorf("RTP() = %v, want about 0.92", got)
+	// The return is quoted at every line and one credit a line.
+	bet := len(Paylines)
+	r := ReturnAt(bet)
+	t.Logf("return to player %.2f%% at a bet of %d: lines %.2f%%, dice %.2f%%, link %.2f%%, major %.2f%%, grand %.2f%%, pot growth %.2f%%",
+		r.Total()*100, bet, r.Lines*100, r.Dice*100, r.Link*100, r.Major*100, r.Grand*100, r.Growth*100)
+	t.Logf("free spins 1 in %.0f, link feature 1 in %.0f", 1/FreeSpinOdds(), 1/LinkOdds())
+	t.Logf("return at a bet of 1: %.2f%%; at %d: %.2f%%", RTP(1)*100, MaxBet, RTP(MaxBet)*100)
+	if got := r.Total(); math.Abs(got-0.92) > 0.005 {
+		t.Errorf("RTP(%d) = %v, want about 0.92", bet, got)
+	}
+	// Only the grand pot should make the return depend on the bet.
+	small, large := ReturnAt(1), ReturnAt(MaxBet)
+	small.Grand, large.Grand = 0, 0
+	if math.Abs(small.Total()-large.Total()) > 1e-4 {
+		t.Errorf("return without the grand pot is %v at the smallest bet and %v at the largest", small.Total(), large.Total())
 	}
 }
 
@@ -159,18 +183,19 @@ func TestPaylines(t *testing.T) {
 	}
 }
 
-// Every spin's result should agree with the grid it reports, line by line,
-// and free spins should cost nothing and pay double.
+// The result of every spin should agree with the grid it reports, line by
+// line, and free spins should cost nothing and pay double.
 func TestSpinAccounting(t *testing.T) {
 	m := New(1, 2)
-	freeSpins := 0
-	for n := range 50000 {
+	freeSpins, links := 0, 0
+	for n := range 100000 {
 		if m.FreeSpins == 0 {
 			m.Credits = StartCredits
 			m.Lines = LineChoices[n%len(LineChoices)]
 			m.BetPerLine = BetChoices[n/len(LineChoices)%len(BetChoices)]
 		}
 		before, waiting := m.Credits, m.FreeSpins
+		major, grand := m.majorPot, m.grandPot
 
 		r, ok := m.Spin()
 		if !ok {
@@ -184,15 +209,24 @@ func TestSpinAccounting(t *testing.T) {
 		if r.Free != (waiting > 0) {
 			t.Fatalf("Free = %v with %d free spins waiting", r.Free, waiting)
 		}
+		if m.majorPot != major+cost*majorGrowth || m.grandPot != grand+cost*grandGrowth {
+			t.Fatalf("pots grew by %d and %d on a spin costing %d", m.majorPot-major, m.grandPot-grand, cost)
+		}
 
-		scatters := 0
+		scatters, chips := 0, 0
 		for i, stop := range r.Stops {
 			if r.Grid[i] != Window(i, stop) {
 				t.Fatalf("reel %d grid %v does not match stop %d", i, r.Grid[i], stop)
 			}
-			for _, s := range r.Grid[i] {
-				if s == Scatter {
+			for row, s := range r.Grid[i] {
+				switch s {
+				case Scatter:
 					scatters++
+				case Link:
+					chips++
+					if c := r.Chips[i][row]; c.Jackpot == NoJackpot && c.Bets == 0 {
+						t.Fatalf("the chip at reel %d row %d carries nothing", i, row)
+					}
 				}
 			}
 		}
@@ -231,41 +265,74 @@ func TestSpinAccounting(t *testing.T) {
 		if want := max(waiting-1, 0) + r.FreeSpinsWon; m.FreeSpins != want {
 			t.Fatalf("%d free spins waiting, want %d", m.FreeSpins, want)
 		}
+
+		// Six or more chips start the link feature, which must be played
+		// out before the next spin.
+		if r.LinkStarted != (chips >= LinkTrigger) || (m.Link != nil) != r.LinkStarted {
+			t.Fatalf("%d chips showing: LinkStarted = %v, feature in progress = %v", chips, r.LinkStarted, m.Link != nil)
+		}
+		if r.LinkStarted {
+			links++
+			if m.Link.Count() != chips || m.Link.Bet != m.TotalBet() {
+				t.Fatalf("feature holds %d chips at bet %d, want %d at %d", m.Link.Count(), m.Link.Bet, chips, m.TotalBet())
+			}
+			if _, ok := m.Spin(); ok {
+				t.Fatal("Spin succeeded during a link feature")
+			}
+			credits := m.Credits
+			end := playLink(t, m)
+			if m.Link != nil || m.Credits != credits+end.Win {
+				t.Fatalf("feature paid %d: credits went from %d to %d", end.Win, credits, m.Credits)
+			}
+		}
 	}
-	if freeSpins == 0 {
-		t.Error("no free spins were played")
+	if freeSpins == 0 || links == 0 {
+		t.Errorf("played %d free spins and %d link features; want some of each", freeSpins, links)
 	}
 }
 
-// A long run of real spins on all lines, free spins included, should pay
-// back close to the calculated RTP and trigger free spins about as often as
-// calculated.
+// A long run of real spins on all lines, features included, should pay back
+// close to the calculated return and trigger the features about as often as
+// calculated. The two growing pots are left out: they pay too rarely for
+// any run to settle near their average.
 func TestSpinReturn(t *testing.T) {
 	const spins = 4_000_000
 	m := New(3, 4)
 	m.Lines = len(Paylines)
-	bet, won, paid, triggers := 0, 0, 0, 0
+	bet, won, paid, frees, links := 0, 0, 0, 0, 0
+	played := 0 // spins of either kind
 	for paid < spins {
 		m.Credits = StartCredits
 		r, _ := m.Spin()
+		played++
 		if !r.Free {
 			paid++
 			bet += m.TotalBet()
 			if r.FreeSpinsWon > 0 {
-				triggers++
+				frees++
 			}
 		}
 		won += r.Win
+		if r.LinkStarted {
+			links++
+			end := playLink(t, m)
+			won += end.Win - end.MajorWin - end.GrandWin
+		}
 	}
+	want := ReturnAt(m.TotalBet())
 	got := float64(won) / float64(bet)
-	odds := float64(triggers) / spins
-	t.Logf("paid back %.2f%% over %d spins of %d lines; free spins 1 in %.1f",
-		got*100, spins, m.Lines, 1/odds)
-	if math.Abs(got-RTP()) > 0.015 {
-		t.Errorf("paid back %v, want about %v", got, RTP())
+	freeOdds := float64(frees) / spins
+	linkOdds := float64(links) / float64(played)
+	t.Logf("paid back %.2f%% over %d spins of %d lines; free spins 1 in %.1f, link feature 1 in %.1f",
+		got*100, spins, m.Lines, 1/freeOdds, 1/linkOdds)
+	if w := want.Lines + want.Dice + want.Link; math.Abs(got-w) > 0.015 {
+		t.Errorf("paid back %v, want about %v", got, w)
 	}
-	if want := FreeSpinOdds(); math.Abs(odds-want) > want/20 {
-		t.Errorf("free spins on %v of spins, want about %v", odds, want)
+	if w := FreeSpinOdds(); math.Abs(freeOdds-w) > w/20 {
+		t.Errorf("free spins on %v of spins, want about %v", freeOdds, w)
+	}
+	if w := LinkOdds(); math.Abs(linkOdds-w) > w/20 {
+		t.Errorf("link feature on %v of spins, want about %v", linkOdds, w)
 	}
 }
 

@@ -1,11 +1,10 @@
 // Package machine holds the slot machine rules: reel strips, paylines, the
-// paytable, free spins and credits. It has no graphics so it can be tested
-// on its own.
+// paytable, free spins, the link feature and credits. It has no graphics so
+// it can be tested on its own.
 package machine
 
 import (
 	"math/rand/v2"
-	"slices"
 )
 
 // Symbol is one picture on a reel.
@@ -27,7 +26,7 @@ const (
 	Dollar
 	Wild    // joker: stands in for any paying symbol and doubles the win
 	Scatter // dice: three or more anywhere award free spins
-	Link    // poker chip: will start the link feature, which is not built yet
+	Link    // poker chip: six or more anywhere start the link feature
 	NumSymbols
 )
 
@@ -72,15 +71,16 @@ const (
 // on a strip sets how likely it is to land, so changing these changes the
 // odds; TestRTP reports the resulting return to player.
 //
-// The wild is kept off the first reel, so it can never start a win. No
-// symbol comes twice within three stops, so a reel never shows two of the
-// same.
+// The wild is kept off the first reel, so it can never start a win. The link
+// chips sit together in a stack of three, so a reel can show a column of
+// them. No other symbol comes twice within three stops, so a reel never
+// shows two of the same.
 var Strips = [Reels][]Symbol{
-	{tn, ch, jk, kg, ch, jk, lk, kg, pl, qn, ac, ch, kg, tn, sv, pl, qn, ac, be, ba, qn, kg, tn, sc, do, tn, lk, ch, jk, tn, ac, be, ba, ch, qn, jk},
-	{jk, tn, pl, do, sc, be, kg, sv, jk, lk, ac, qn, wd, jk, kg, ch, ba, qn, tn, kg, ac, tn, ch, sv, tn, pl, qn, wd, jk, sc, ch, be, ac, qn, kg, lk},
-	{sv, kg, lk, jk, be, qn, jk, tn, ch, qn, sc, ch, ac, qn, kg, tn, jk, ac, kg, jk, do, ac, ba, kg, qn, pl, tn, jk, kg, ch, qn, jk, wd, be, pl, lk},
-	{ch, lk, pl, tn, jk, kg, ba, be, wd, sc, ac, qn, do, sv, ch, qn, ac, ch, pl, ba, tn, kg, jk, ac, tn, ba, wd, ac, sv, lk, sc, qn, jk, kg, pl, be},
-	{wd, sv, pl, ac, ch, jk, ba, ch, wd, pl, be, jk, qn, pl, be, sc, qn, do, tn, ba, ac, kg, lk, qn, jk, be, kg, ac, tn, sv, ch, kg, tn, ba, do, lk},
+	{jk, pl, qn, ac, be, jk, kg, be, sv, kg, ch, ac, qn, ch, ba, ac, jk, tn, kg, sc, qn, ba, tn, sc, jk, tn, sv, ch, do, lk, lk, lk, kg, pl, ac, tn, sv, ch, pl, ba, tn, jk, qn, kg},
+	{jk, kg, wd, ch, qn, ac, ch, tn, jk, ch, qn, pl, ch, ac, kg, tn, jk, sc, tn, kg, ch, jk, kg, sv, jk, tn, ac, be, do, tn, ba, sv, qn, pl, ch, qn, kg, wd, lk, lk, lk, sc, tn, be},
+	{qn, jk, sv, ac, qn, kg, jk, ac, kg, jk, tn, kg, qn, pl, jk, qn, kg, ch, qn, pl, ch, be, kg, jk, qn, sc, be, ba, tn, do, ch, ba, wd, ac, qn, be, wd, kg, ac, jk, lk, lk, lk, tn},
+	{jk, pl, be, qn, ac, tn, ch, ac, be, qn, do, pl, jk, ba, qn, ac, sc, pl, be, wd, ac, do, lk, lk, lk, jk, tn, kg, qn, ba, kg, jk, wd, ch, tn, pl, ch, ba, ac, sv, qn, kg, sc, be},
+	{sc, ch, qn, pl, tn, ac, kg, wd, ac, jk, ch, ac, be, tn, qn, do, jk, sc, do, sv, be, ch, ac, jk, ba, qn, kg, jk, ba, qn, tn, be, ac, qn, kg, ba, pl, wd, lk, lk, lk, pl, qn, be},
 }
 
 // Row numbers within a reel's window.
@@ -147,8 +147,8 @@ var Pays = [NumSymbols][Reels + 1]int{
 // showing, ScatterPays is the prize per credit of the total bet and
 // FreeSpinAwards the free spins won.
 var (
-	ScatterPays    = [Reels + 1]int{3: 5, 4: 20, 5: 400}
-	FreeSpinAwards = [Reels + 1]int{3: 15, 4: 20, 5: 25}
+	ScatterPays    = [Reels + 1]int{3: 2, 4: 10, 5: 60}
+	FreeSpinAwards = [Reels + 1]int{3: 8, 4: 12, 5: 20}
 )
 
 // FreeSpinMultiplier multiplies every win during free spins.
@@ -199,111 +199,6 @@ func Window(reel, stop int) [Rows]Symbol {
 	return [Rows]Symbol{s[(stop+1)%n], s[stop], s[(stop-1+n)%n]}
 }
 
-// count is how many times sym is on a reel's strip.
-func count(reel int, sym Symbol) int {
-	n := 0
-	for _, s := range Strips[reel] {
-		if s == sym {
-			n++
-		}
-	}
-	return n
-}
-
-// lineReturn is the fraction of the bet on a line that payline wins pay
-// back. Each reel stops independently, so every payline has the same odds
-// and the figure holds however many lines are played.
-func lineReturn() float64 {
-	total := 0.0
-	for sym := Ten; sym <= Dollar; sym++ {
-		// lead is the chance the line starts with a run of at least n, and
-		// plain the chance it does so without the help of a wild.
-		lead := float64(count(0, sym)) / float64(len(Strips[0]))
-		plain := lead
-		for n := 1; n <= Reels; n++ {
-			// The run goes on if the next reel shows the symbol or a wild.
-			var symNext, wildNext float64
-			if n < Reels {
-				stops := float64(len(Strips[n]))
-				symNext = float64(count(n, sym)) / stops
-				wildNext = float64(count(n, Wild)) / stops
-			}
-			ends := 1 - symNext - wildNext
-			total += float64(Pays[sym][n]) * ends * (plain + WildMultiplier*(lead-plain))
-			lead *= symNext + wildNext
-			plain *= symNext
-		}
-	}
-	return total
-}
-
-// scatterOdds returns the chance of each number of scatters showing.
-func scatterOdds() [Reels + 1]float64 {
-	odds := [Reels + 1]float64{1}
-	for reel := range Reels {
-		// The strips keep scatters apart, so a reel shows one or none.
-		showing := 0
-		for stop := range Strips[reel] {
-			w := Window(reel, stop)
-			if slices.Contains(w[:], Scatter) {
-				showing++
-			}
-		}
-		p := float64(showing) / float64(len(Strips[reel]))
-		for k := reel + 1; k > 0; k-- {
-			odds[k] = odds[k]*(1-p) + odds[k-1]*p
-		}
-		odds[0] *= 1 - p
-	}
-	return odds
-}
-
-// FreeSpinOdds is the chance that a spin awards free spins.
-func FreeSpinOdds() float64 {
-	total := 0.0
-	for k, p := range scatterOdds() {
-		if FreeSpinAwards[k] > 0 {
-			total += p
-		}
-	}
-	return total
-}
-
-// RTP is the long-run return to player: the fraction of money bet that the
-// machine pays back, counting line wins, scatter prizes and free spins.
-func RTP() float64 {
-	// What one spin pays before any free spins it awards, and how many free
-	// spins it awards on average.
-	spin, awarded := lineReturn(), 0.0
-	for k, p := range scatterOdds() {
-		spin += p * float64(ScatterPays[k])
-		awarded += p * float64(FreeSpinAwards[k])
-	}
-	// Free spins can award more free spins, so one awarded spin leads to
-	// 1/(1-awarded) spins played on average.
-	return spin * (1 + FreeSpinMultiplier*awarded/(1-awarded))
-}
-
-// LinkPrize is what a link chip carries: one of the jackpots, or a number
-// of total bets.
-type LinkPrize struct {
-	Jackpot string // "MINI", "MINOR", "MAJOR", "GRAND", or empty
-	Bets    int
-}
-
-// linkPrizes are dealt out to the chips on the strips in turn.
-var linkPrizes = []LinkPrize{
-	{Bets: 1}, {Bets: 2}, {Jackpot: "MINI"}, {Bets: 1}, {Bets: 5},
-	{Jackpot: "MINOR"}, {Bets: 3}, {Bets: 1}, {Jackpot: "MAJOR"}, {Bets: 10},
-	{Bets: 2}, {Jackpot: "GRAND"},
-}
-
-// LinkPrizeAt is the prize shown on the chip at a reel stop. The chips do
-// nothing yet: the link feature they belong to has not been built.
-func LinkPrizeAt(reel, stop int) LinkPrize {
-	return linkPrizes[(reel*5+stop)%len(linkPrizes)]
-}
-
 // LineWin is a win on one payline.
 type LineWin struct {
 	Line    int    // index into Paylines
@@ -324,6 +219,9 @@ type Result struct {
 	ScatterWin   int  // credits won by the scatters
 	FreeSpinsWon int  // free spins this spin awarded
 
+	Chips       [Reels][Rows]Chip // what each link chip showing carries
+	LinkStarted bool              // enough chips landed to start the link feature
+
 	Win int // total credits won
 }
 
@@ -332,9 +230,12 @@ type Machine struct {
 	Credits    int
 	Lines      int // paylines being played
 	BetPerLine int
-	FreeSpins  int // free spins waiting to be played
+	FreeSpins  int      // free spins waiting to be played
+	Link       *Feature // the link feature in progress, if there is one
 	Stops      [Reels]int
-	rng        *rand.Rand
+
+	majorPot, grandPot int // in thousandths of a credit
+	rng                *rand.Rand
 }
 
 // New returns a machine with the starting credits. The seeds fix the
@@ -344,6 +245,8 @@ func New(seed1, seed2 uint64) *Machine {
 		Credits:    StartCredits,
 		Lines:      1,
 		BetPerLine: 1,
+		majorPot:   MajorStart * potUnit,
+		grandPot:   GrandStart * potUnit,
 		rng:        rand.New(rand.NewPCG(seed1, seed2)),
 	}
 }
@@ -356,30 +259,43 @@ func (m *Machine) TotalBet() int {
 // Spin stops each reel at random and pays the wins on every payline being
 // played, along with any scatter prize. It plays a free spin if any are
 // waiting; otherwise it takes the bet, and reports false and changes
-// nothing if there are too few credits.
+// nothing if there are too few credits. It also reports false while a link
+// feature is in progress: that is played out with Respin.
 //
-// Lines and BetPerLine must not be changed while free spins are waiting:
-// they are played at the bet that won them.
+// Lines and BetPerLine must not be changed while free spins are waiting or
+// a link feature is in progress: they are played at the bet that won them.
 func (m *Machine) Spin() (Result, bool) {
+	if m.Link != nil {
+		return Result{}, false
+	}
 	var r Result
+	bet := m.TotalBet()
 	multiplier := 1
 	if m.FreeSpins > 0 {
 		m.FreeSpins--
 		r.Free = true
 		multiplier = FreeSpinMultiplier
 	} else {
-		if m.Credits < m.TotalBet() {
+		if m.Credits < bet {
 			return Result{}, false
 		}
-		m.Credits -= m.TotalBet()
+		m.Credits -= bet
+		// A cut of every bet goes into the two jackpot pots.
+		m.majorPot += bet * majorGrowth
+		m.grandPot += bet * grandGrowth
 	}
 
+	link := Feature{Bet: bet, Respins: LinkRespins}
 	for i := range Reels {
 		r.Stops[i] = m.rng.IntN(len(Strips[i]))
 		r.Grid[i] = Window(i, r.Stops[i])
-		for _, s := range r.Grid[i] {
-			if s == Scatter {
+		for row, s := range r.Grid[i] {
+			switch s {
+			case Scatter:
 				r.Scatters++
+			case Link:
+				link.Chips[i][row] = m.dealChip(bet, !link.hasMajor())
+				link.Held[i][row] = true
 			}
 		}
 	}
@@ -395,9 +311,17 @@ func (m *Machine) Spin() (Result, bool) {
 			r.Win += win
 		}
 	}
-	r.ScatterWin = ScatterPays[r.Scatters] * m.TotalBet() * multiplier
+	r.ScatterWin = ScatterPays[min(r.Scatters, Reels)] * bet * multiplier
 	r.Win += r.ScatterWin
-	r.FreeSpinsWon = FreeSpinAwards[r.Scatters]
+	r.FreeSpinsWon = FreeSpinAwards[min(r.Scatters, Reels)]
+
+	// The chips pay nothing by themselves, but enough of them lock in
+	// place and start the link feature.
+	r.Chips = link.Chips
+	if link.Count() >= LinkTrigger {
+		r.LinkStarted = true
+		m.Link = &link
+	}
 
 	m.Stops = r.Stops
 	m.Credits += r.Win
