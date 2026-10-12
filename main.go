@@ -377,7 +377,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"A spin costs the bet per line times the number of lines.",
 		"Each line is a path across the five reels, read left to right.",
 		"Three or more of a symbol in a row from the left reel win.",
-		"Four or five in a row pay much more. Cherries pay from one.",
+		"Four or five in a row pay much more. Cherries pay from two.",
 		"A line's win is multiplied by the bet per line.",
 	}
 	for i, l := range lines {
@@ -598,13 +598,10 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 		}
 		i++
 	}
-	// Cherries are the only symbol to pay for a run of two or one.
-	for n := 2; n >= 1; n-- {
-		lit := win != nil && win.Symbol == machine.Cherry && win.Matched == n
-		cy := row(i, machine.Cherry, n, lit)
-		drawText(screen, pays(machine.Cherry, n), col(machine.Reels), cy, 13, white, alignEnd, alignCenter)
-		i++
-	}
+	// Cherries are the only symbol to pay for a run of two.
+	lit := win != nil && win.Symbol == machine.Cherry && win.Matched == 2
+	cy := row(i, machine.Cherry, 2, lit)
+	drawText(screen, pays(machine.Cherry, 2), col(machine.Reels), cy, 13, white, alignEnd, alignCenter)
 	note := fmt.Sprintf("AT %d PER LINE", g.m.BetPerLine)
 	drawText(screen, note, panelX+panelW-12, reelsY+reelsH-3, 10, lightGray, alignEnd, alignCenter)
 }

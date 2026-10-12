@@ -92,10 +92,10 @@ var (
 )
 
 // Pays is the payout per credit bet on a line, by symbol and by how many of
-// it run along the payline from the left reel. Only cherries pay for fewer
-// than three.
+// it run along the payline from the left reel. Only cherries pay for two;
+// nothing pays for one.
 var Pays = [NumSymbols][Reels + 1]int{
-	Cherry: {0, 1, 2, 5, 15, 50},
+	Cherry: {0, 0, 2, 5, 15, 50},
 	Plum:   {0, 0, 0, 4, 20, 75},
 	Bell:   {0, 0, 0, 8, 40, 150},
 	Bar:    {0, 0, 0, 18, 75, 300},

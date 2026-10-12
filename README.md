@@ -55,8 +55,8 @@ The keyboard works too:
 
 You start with 1000 credits. Each payline is a path across the five reels.
 Three or more of a symbol in a row along a line, starting from the left
-reel, win; four or five in a row pay much more. Cherries also pay for one or
-two. A line's win is multiplied by the bet per line, and the wins on all the
+reel, win; four or five in a row pay much more. Cherries also pay for two.
+A line's win is multiplied by the bet per line, and the wins on all the
 lines played are added together.
 
 There are 25 paylines, listed in `machine/machine.go`. Choosing
@@ -76,7 +76,7 @@ line is shown in turn.
 ## Odds
 
 The odds come from the reel strips and paytable in `machine/machine.go`.
-The machine pays back about 92% of what is bet over the long run, however
+The machine pays back about 72% of what is bet over the long run, however
 many lines are played. Run the tests
 to recalculate it after changing either:
 

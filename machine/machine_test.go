@@ -30,7 +30,7 @@ func TestEvaluate(t *testing.T) {
 		{[Reels]Symbol{c, c, c, c, c}, 50, 5},
 		{[Reels]Symbol{c, c, c, b, c}, 5, 3},
 		{[Reels]Symbol{c, c, b, c, c}, 2, 2},
-		{[Reels]Symbol{c, p, c, c, c}, 1, 1},
+		{[Reels]Symbol{c, p, c, c, c}, 0, 0},
 		{[Reels]Symbol{p, c, c, c, c}, 0, 0},
 		{[Reels]Symbol{b, b, s, b, b}, 0, 0},
 		{[Reels]Symbol{p, s, s, s, s}, 0, 0},
@@ -47,8 +47,8 @@ func TestEvaluate(t *testing.T) {
 func TestRTP(t *testing.T) {
 	got := RTP()
 	t.Logf("return to player: %.2f%%", got*100)
-	if math.Abs(got-0.92) > 0.005 {
-		t.Errorf("RTP() = %v, want about 0.92", got)
+	if math.Abs(got-0.72) > 0.005 {
+		t.Errorf("RTP() = %v, want about 0.72", got)
 	}
 }
 
