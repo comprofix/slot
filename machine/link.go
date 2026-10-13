@@ -34,8 +34,8 @@ const (
 	LinkRespins = 3
 
 	// The mini and minor jackpots, in total bets.
-	MiniBets  = 40
-	MinorBets = 400
+	MiniBets  = 20
+	MinorBets = 200
 
 	// Where the major and grand pots start, in credits. At 100 credits to
 	// the dollar these are $5,000 and $20,000.
@@ -56,16 +56,17 @@ var MaxBet = LineChoices[len(LineChoices)-1] * BetChoices[len(BetChoices)-1]
 // chipBets are the ordinary chip values, in total bets, and how often each
 // is dealt relative to the others.
 var chipBets = []struct{ bets, weight int }{
-	{1, 76}, {2, 17}, {3, 4}, {5, 2}, {10, 1},
+	{1, 500}, {2, 230}, {3, 110}, {4, 60}, {5, 50},
+	{10, 30}, {15, 10}, {20, 6}, {50, 3}, {100, 1},
 }
 
 // The chance that a chip is dealt as each jackpot. The major pot pays the
 // same whatever the bet, so its chance grows with the bet to keep the
 // return even: majorOdds is the chance at MaxBet.
 const (
-	miniOdds  = 0.004
-	minorOdds = 0.00025
-	majorOdds = 0.0002
+	miniOdds  = 0.015
+	minorOdds = 0.0005
+	majorOdds = 0.0004
 )
 
 // respinBase sets how likely an empty cell is to land a chip on a respin.

@@ -61,15 +61,6 @@ func drawSymbol(dst *ebiten.Image, sym machine.Symbol, cx, cy, scale float64) {
 		fillPoly(dst, gold, x(-20), y(-8), x(20), y(-8), x(28), y(20), x(-28), y(20))
 		fillRect(dst, x(-32), y(18), 64*s, 7*s, goldDark)
 
-	case machine.Bar:
-		fillRect(dst, x(-48), y(-24), 96*s, 48*s, yellow)
-		frameRect(dst, x(-43), y(-19), 86*s, 38*s, 2*s, red)
-		drawText(dst, "BAR", x(0), y(0), 32*s, red, alignCenter, alignCenter)
-
-	case machine.Seven:
-		drawText(dst, "7", x(3), y(3), 76*s, red, alignCenter, alignCenter)
-		drawText(dst, "7", x(0), y(0), 76*s, lightRed, alignCenter, alignCenter)
-
 	case machine.Dollar:
 		// The S is built from straight strokes, as in the original.
 		w := 6 * s
@@ -150,7 +141,10 @@ func drawChip(dst *ebiten.Image, cx, cy, scale float64, label string) {
 	fillCircle(dst, cx, cy, 24*s, chipFelt)
 
 	size := 20.0
-	if len(label) > 3 {
+	switch {
+	case len(label) > 5:
+		size = 11
+	case len(label) > 3:
 		size = 13
 	}
 	drawText(dst, label, cx, cy, size*s, yellow, alignCenter, alignCenter)

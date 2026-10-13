@@ -21,8 +21,6 @@ const (
 	Cherry
 	Plum
 	Bell
-	Bar
-	Seven
 	Dollar
 	Wild    // joker: stands in for any paying symbol and doubles the win
 	Scatter // dice: three or more anywhere award free spins
@@ -33,7 +31,7 @@ const (
 func (s Symbol) String() string {
 	return [...]string{
 		"Ten", "Jack", "Queen", "King", "Ace", "Cherry", "Plum", "Bell",
-		"Bar", "Seven", "Dollar", "Wild", "Scatter", "Link",
+		"Dollar", "Wild", "Scatter", "Link",
 	}[s]
 }
 
@@ -44,9 +42,9 @@ func (s Symbol) Paying() bool {
 
 const (
 	Reels        = 5
-	Rows         = 3 // symbols showing on each reel
-	StartCredits = 1000
-	CoinCredits  = 100 // credits added by inserting a coin
+	Rows         = 3      // symbols showing on each reel
+	StartCredits = 10_000 // $100 at 100 credits to the dollar
+	CoinCredits  = 10_000 // credits added by inserting a coin: $100
 )
 
 // Short names keep the strips below readable.
@@ -59,8 +57,6 @@ const (
 	ch = Cherry
 	pl = Plum
 	be = Bell
-	ba = Bar
-	sv = Seven
 	do = Dollar
 	wd = Wild
 	sc = Scatter
@@ -76,11 +72,11 @@ const (
 // them. No other symbol comes twice within three stops, so a reel never
 // shows two of the same.
 var Strips = [Reels][]Symbol{
-	{jk, pl, qn, ac, be, jk, kg, be, sv, kg, ch, ac, qn, ch, ba, ac, jk, tn, kg, sc, qn, ba, tn, sc, jk, tn, sv, ch, do, lk, lk, lk, kg, pl, ac, tn, sv, ch, pl, ba, tn, jk, qn, kg},
-	{jk, kg, wd, ch, qn, ac, ch, tn, jk, ch, qn, pl, ch, ac, kg, tn, jk, sc, tn, kg, ch, jk, kg, sv, jk, tn, ac, be, do, tn, ba, sv, qn, pl, ch, qn, kg, wd, lk, lk, lk, sc, tn, be},
-	{qn, jk, sv, ac, qn, kg, jk, ac, kg, jk, tn, kg, qn, pl, jk, qn, kg, ch, qn, pl, ch, be, kg, jk, qn, sc, be, ba, tn, do, ch, ba, wd, ac, qn, be, wd, kg, ac, jk, lk, lk, lk, tn},
-	{jk, pl, be, qn, ac, tn, ch, ac, be, qn, do, pl, jk, ba, qn, ac, sc, pl, be, wd, ac, do, lk, lk, lk, jk, tn, kg, qn, ba, kg, jk, wd, ch, tn, pl, ch, ba, ac, sv, qn, kg, sc, be},
-	{sc, ch, qn, pl, tn, ac, kg, wd, ac, jk, ch, ac, be, tn, qn, do, jk, sc, do, sv, be, ch, ac, jk, ba, qn, kg, jk, ba, qn, tn, be, ac, qn, kg, ba, pl, wd, lk, lk, lk, pl, qn, be},
+	{qn, tn, sc, do, kg, qn, pl, do, jk, qn, kg, tn, ch, jk, tn, kg, be, qn, ch, pl, ac, qn, jk, pl, ac, tn, jk, qn, be, kg, do, ch, lk, lk, lk, jk, tn, kg, do, sc, be, qn, jk, ac},
+	{jk, ac, do, jk, be, kg, wd, tn, qn, jk, tn, pl, kg, do, qn, ch, kg, pl, wd, ac, do, qn, jk, lk, lk, lk, pl, jk, ch, ac, wd, be, qn, kg, sc, do, be, ch, sc, tn, qn, jk, wd, kg},
+	{qn, pl, tn, qn, jk, tn, qn, kg, pl, jk, wd, do, be, qn, kg, ch, jk, do, ac, kg, jk, wd, qn, tn, jk, ch, sc, qn, tn, jk, be, qn, ac, ch, be, pl, tn, qn, lk, lk, lk, kg, ac, jk},
+	{tn, ac, kg, pl, wd, jk, ch, pl, jk, wd, qn, jk, ch, wd, pl, qn, kg, tn, jk, qn, tn, be, do, ac, kg, qn, tn, sc, wd, be, ch, qn, do, jk, qn, lk, lk, lk, tn, kg, sc, ac, do, be},
+	{kg, do, ac, be, jk, tn, qn, jk, ch, be, sc, qn, tn, wd, pl, ac, do, tn, ac, qn, jk, sc, kg, qn, ac, ch, qn, pl, wd, kg, tn, jk, pl, tn, qn, wd, kg, be, ch, lk, lk, lk, do, jk},
 }
 
 // Row numbers within a reel's window.
@@ -96,58 +92,82 @@ var Paylines = [...][Reels]int{
 	{1, 1, 1, 1, 1},
 	{0, 0, 0, 0, 0},
 	{2, 2, 2, 2, 2},
-	{2, 1, 0, 1, 2},
 	{0, 1, 2, 1, 0},
-	{1, 2, 1, 0, 1},
-	{1, 2, 1, 2, 1},
-	{0, 1, 0, 1, 2},
-	{2, 1, 2, 1, 0},
-	{2, 1, 0, 1, 0},
-	{0, 1, 2, 1, 2},
-	{1, 0, 1, 2, 1},
-	{2, 1, 2, 1, 2},
-	{1, 0, 1, 0, 1},
-	{0, 1, 0, 1, 0},
-	{1, 1, 2, 1, 1},
+	{2, 1, 0, 1, 2},
 	{0, 0, 1, 0, 0},
 	{2, 2, 1, 2, 2},
+	{1, 2, 2, 2, 1},
+	{1, 0, 0, 0, 1},
+	{0, 1, 1, 1, 0},
+	{2, 1, 1, 1, 2},
+	{0, 1, 0, 1, 0},
+	{2, 1, 2, 1, 2},
+	{1, 0, 1, 0, 1},
+	{1, 2, 1, 2, 1},
 	{1, 1, 0, 1, 1},
+	{1, 1, 2, 1, 1},
+	{0, 2, 0, 2, 0},
+	{2, 0, 2, 0, 2},
+	{1, 0, 2, 0, 1},
+	{1, 2, 0, 2, 1},
 	{0, 0, 2, 0, 0},
 	{2, 2, 0, 2, 2},
-	{1, 1, 1, 2, 1},
-	{0, 0, 0, 1, 2},
-	{2, 2, 2, 1, 0},
+	{0, 2, 2, 2, 0},
+	{2, 0, 0, 0, 2},
+	{0, 2, 1, 2, 0},
+	{2, 0, 1, 0, 2},
+	{1, 1, 1, 1, 2},
+	{0, 0, 1, 2, 2},
+	{2, 2, 1, 0, 0},
+	{0, 1, 1, 1, 2},
 	{2, 1, 1, 1, 0},
+	{0, 1, 2, 1, 2},
+	{2, 1, 0, 1, 0},
+	{0, 0, 0, 0, 1},
+	{2, 2, 2, 2, 1},
+	{0, 1, 0, 1, 2},
+	{2, 1, 2, 1, 0},
+	{1, 0, 1, 2, 1},
+	{1, 2, 1, 0, 1},
+	{1, 1, 0, 0, 0},
+	{1, 1, 2, 2, 2},
+	{1, 0, 0, 1, 2},
+	{1, 2, 2, 1, 0},
+	{1, 0, 1, 2, 2},
+	{1, 2, 1, 0, 0},
+	{2, 1, 0, 0, 1},
+	{0, 1, 2, 2, 1},
+	{0, 0, 1, 2, 1},
+	{2, 2, 1, 0, 1},
 }
 
 // The numbers of lines and the bets per line a player can choose from.
 var (
-	LineChoices = []int{1, 5, 10, 15, 25}
+	LineChoices = []int{1, 5, 10, 25, 50}
 	BetChoices  = []int{1, 2, 5, 10, 20}
 )
 
 // Pays is the payout per credit bet on a line, by symbol and by how many of
-// it run along the payline from the left reel. A few symbols pay for two;
-// nothing pays for one.
+// it run along the payline from the left reel. Only the dollar pays for
+// two; nothing pays for one. The prizes are kept small and close together,
+// so that line wins come steadily and the big money is left to the chips.
 var Pays = [NumSymbols][Reels + 1]int{
-	Ten:    {0, 0, 2, 5, 20, 100},
-	Jack:   {0, 0, 0, 5, 20, 100},
-	Queen:  {0, 0, 0, 5, 25, 100},
-	King:   {0, 0, 0, 5, 25, 125},
-	Ace:    {0, 0, 0, 10, 40, 150},
-	Cherry: {0, 0, 2, 10, 50, 200},
-	Plum:   {0, 0, 0, 15, 75, 250},
-	Bell:   {0, 0, 0, 20, 100, 400},
-	Bar:    {0, 0, 0, 25, 125, 500},
-	Seven:  {0, 0, 2, 40, 200, 1000},
-	Dollar: {0, 0, 5, 100, 500, 5000},
+	Ten:    {0, 0, 0, 5, 10, 50},
+	Jack:   {0, 0, 0, 5, 10, 50},
+	Queen:  {0, 0, 0, 5, 10, 50},
+	King:   {0, 0, 0, 5, 10, 50},
+	Ace:    {0, 0, 0, 5, 20, 75},
+	Cherry: {0, 0, 0, 5, 25, 100},
+	Plum:   {0, 0, 0, 5, 25, 100},
+	Bell:   {0, 0, 0, 5, 30, 100},
+	Dollar: {0, 0, 2, 10, 50, 150},
 }
 
 // Scatters pay wherever they land, not along paylines. By how many are
 // showing, ScatterPays is the prize per credit of the total bet and
 // FreeSpinAwards the free spins won.
 var (
-	ScatterPays    = [Reels + 1]int{3: 2, 4: 10, 5: 60}
+	ScatterPays    = [Reels + 1]int{3: 2, 4: 15, 5: 100}
 	FreeSpinAwards = [Reels + 1]int{3: 8, 4: 12, 5: 20}
 )
 

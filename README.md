@@ -41,7 +41,7 @@ feature is won or the credits run short.
 | Buttons | Choices |
 |---|---|
 | Bet per line (top row) | 1, 2, 5, 10 or 20 credits |
-| Lines (bottom row) | 1, 5, 10, 15 or 25 lines |
+| Lines (bottom row) | 1, 5, 10, 25 or 50 lines |
 
 The keyboard works too:
 
@@ -50,23 +50,22 @@ The keyboard works too:
 | Space or Enter | Spin |
 | Up / Down | Change the bet per line |
 | Left / Right | Change the number of lines |
-| M | Play all 25 lines at the highest bet the credits cover |
+| M | Play all 50 lines at the highest bet the credits cover |
 | A | Auto spin on or off |
-| C | Insert a coin: 100 more credits |
-| R | Reset your credits to 1000 |
+| C | Insert a coin: 10,000 more credits ($100) |
+| R | Reset your credits to 10,000 ($100) |
 | S | Sound on or off |
 | Esc | Back to the menu |
 
-You start with 1000 credits. The INSERT COIN button adds 100 more whenever
-you want them, and RESET puts them back to 1000. Each payline is a path across
+You start with 10,000 credits ($100). The INSERT COIN button adds 10,000 more
+whenever you want them, and RESET puts them back to 10,000. Each payline is a path across
 the five reels.
 Three or more of a symbol in a row along a line, starting from the left
-reel, win; four or five in a row pay much more. The 10, cherry, seven and
-dollar also pay for two.
+reel, win; four or five in a row pay more. Two dollars in a row pay too.
 A win on a line is multiplied by the bet per line, and the wins on all the
 lines played are added together.
 
-There are 25 paylines, listed in `machine/machine.go`. Choosing
+There are 50 paylines, listed in `machine/machine.go`. Choosing
 a number of lines shows them over the reels, and after a win each winning
 line is shown in turn.
 
@@ -75,14 +74,14 @@ line is shown in turn.
 | Symbol | What it does |
 |---|---|
 | 10, J, Q, K, A | Low-paying line symbols |
-| Cherry, plum, bell, BAR, seven, dollar | Higher-paying line symbols |
+| Cherry, plum, bell, dollar | Higher-paying line symbols |
 | Joker | Wild: stands in for any of the symbols above and doubles the win. Reels 2 to 5 only |
 | Dice | Scatter: three or more anywhere pay a prize and win free spins |
 | Poker chip | Six or more anywhere start the link feature |
 
 ### Free spins
 
-Three, four or five dice anywhere on the reels pay 2, 10 or 60 times the
+Three, four or five dice anywhere on the reels pay 2, 15 or 100 times the
 total bet and win 8, 12 or 20 free spins. Free spins cost nothing, play by
 themselves at the bet that won them, and pay every win twice over.
 More dice during free spins win more free spins.
@@ -103,9 +102,9 @@ It can start during free spins as well.
 
 | A chip can carry | Worth |
 |---|---|
-| Credits | 1 to 10 times the total bet |
-| MINI | 40 times the total bet |
-| MINOR | 400 times the total bet |
+| Credits | 1 to 100 times the total bet |
+| MINI | 20 times the total bet |
+| MINOR | 200 times the total bet |
 | MAJOR | The major pot |
 
 The GRAND is not on a chip: it is paid for filling all fifteen positions.
@@ -143,14 +142,14 @@ again from scratch, pots included.
 
 ## Odds
 
-The odds come from the reel strips and rules in `machine/`. At a bet of 25
+The odds come from the reel strips and rules in `machine/`. At a bet of 50
 credits the machine pays back about 92% of what is bet over the long run:
 
 | From | Share of what is bet |
 |---|---|
-| Line wins | 53% |
-| Dice prizes and free spins | 20% |
-| Link chips, with MINI and MINOR | 15% |
+| Line wins | 44% |
+| Dice prizes and free spins | 18% |
+| Link chips, with MINI and MINOR | 27% |
 | MAJOR and GRAND pots | 4% |
 
 Free spins come up about once in 68 spins and the link feature about once

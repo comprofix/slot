@@ -174,19 +174,19 @@ func lineButton(i int) button {
 	return button{reelsX + float64(i)*(reelW+reelGap), lineRowY, reelW, buttonH}
 }
 
-// The spin and auto spin buttons sit under the paytable beside the two rows,
-// with the coin and reset buttons below them.
+// The other four buttons sit under the paytable, in line with the two rows:
+// spin and auto spin beside the bets, coin and reset beside the lines.
 const (
-	coinH  = 24
-	resetW = 64
-	autoW  = 62
+	sideW = 64                       // auto spin and reset
+	mainW = panelW - sideW - reelGap // spin and coin
+	sideX = panelX + mainW + reelGap
 )
 
 var (
-	spinButton  = button{panelX, betRowY, panelW - autoW - 4, lineRowY + buttonH - betRowY - coinH - 4}
-	autoButton  = button{panelX + panelW - autoW, betRowY, autoW, lineRowY + buttonH - betRowY - coinH - 4}
-	coinButton  = button{panelX, lineRowY + buttonH - coinH, panelW - resetW - 4, coinH}
-	resetButton = button{panelX + panelW - resetW, lineRowY + buttonH - coinH, resetW, coinH}
+	spinButton  = button{panelX, betRowY, mainW, buttonH}
+	autoButton  = button{sideX, betRowY, sideW, buttonH}
+	coinButton  = button{panelX, lineRowY, mainW, buttonH}
+	resetButton = button{sideX, lineRowY, sideW, buttonH}
 )
 
 func (g *Game) Update() error {
@@ -551,7 +551,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 	drawText(screen, "MAKE YOUR CHOICE", screenW/2, 355, 24, lightBlue, alignCenter, alignStart)
 
 	for s := machine.Ten; s < machine.NumSymbols; s++ {
-		drawSymbol(screen, s, screenW/2-338+float64(s)*52, 470, 0.42)
+		drawSymbol(screen, s, screenW/2-286+float64(s)*52, 470, 0.42)
 	}
 }
 
@@ -563,7 +563,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"A spin costs the bet per line times the number of lines.",
 		"Each line is a path across the five reels, read left to right.",
 		"Three or more of a symbol in a row from the left reel win.",
-		"Four or five in a row pay much more. A few symbols pay for two.",
+		"Four or five in a row pay more. Two dollars in a row pay too.",
 		"A win on a line is multiplied by the bet per line.",
 		"The joker is wild on reels 2 to 5 and doubles any win it helps make.",
 		"Three or more dice anywhere win free spins, with all wins doubled.",
@@ -673,9 +673,9 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	}
 	fillRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, green)
 	frameRect(screen, spinButton.x, spinButton.y, spinButton.w, spinButton.h, 2, lightGreen)
-	spinSize := 30.0
+	spinSize := 26.0
 	if len(spinLabel) > 4 {
-		spinSize = 20
+		spinSize = 18
 	}
 	drawText(screen, spinLabel, spinButton.x+spinButton.w/2, spinButton.y+spinButton.h/2, spinSize, white, alignCenter, alignCenter)
 
@@ -687,7 +687,7 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 
 	fillRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, gold)
 	frameRect(screen, coinButton.x, coinButton.y, coinButton.w, coinButton.h, 2, yellow)
-	coinLabel := fmt.Sprintf("INSERT COIN  +%d", machine.CoinCredits)
+	coinLabel := fmt.Sprintf("INSERT COIN +$%d", machine.CoinCredits/100)
 	drawText(screen, coinLabel, coinButton.x+coinButton.w/2, coinButton.y+coinButton.h/2, 12, black, alignCenter, alignCenter)
 
 	fillRect(screen, resetButton.x, resetButton.y, resetButton.w, resetButton.h, red)
@@ -824,7 +824,8 @@ func (g *Game) chipAt(reel, stop int) machine.Chip {
 var passingChips = []machine.Chip{
 	{Bets: 1}, {Bets: 2}, {Bets: 1}, {Jackpot: machine.Mini}, {Bets: 3},
 	{Bets: 1}, {Bets: 5}, {Bets: 2}, {Jackpot: machine.Minor}, {Bets: 1},
-	{Bets: 10}, {Bets: 2}, {Jackpot: machine.Major},
+	{Bets: 10}, {Bets: 2}, {Jackpot: machine.Major}, {Bets: 4}, {Bets: 20},
+	{Bets: 1}, {Bets: 50}, {Bets: 3}, {Bets: 15}, {Bets: 100},
 }
 
 // chipLabel is the text on a link chip: the name of its jackpot, or its

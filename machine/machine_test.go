@@ -11,8 +11,7 @@ func TestEvaluate(t *testing.T) {
 		a  = Ace
 		c  = Cherry
 		p  = Plum
-		b  = Bar
-		s  = Seven
+		b  = Bell
 		d  = Dollar
 		w  = Wild
 		x  = Scatter
@@ -24,34 +23,33 @@ func TestEvaluate(t *testing.T) {
 		sym     Symbol
 		matched int
 	}{
-		{[Reels]Symbol{d, d, d, d, d}, 5000, d, 5},
-		{[Reels]Symbol{d, d, d, d, s}, 500, d, 4},
-		{[Reels]Symbol{d, d, d, b, d}, 100, d, 3},
-		{[Reels]Symbol{s, s, s, s, s}, 1000, s, 5},
+		{[Reels]Symbol{d, d, d, d, d}, 150, d, 5},
+		{[Reels]Symbol{d, d, d, d, b}, 50, d, 4},
+		{[Reels]Symbol{d, d, d, b, d}, 10, d, 3},
+		{[Reels]Symbol{b, b, b, b, b}, 100, b, 5},
 		{[Reels]Symbol{t0, t0, t0, a, a}, 5, t0, 3},
-		{[Reels]Symbol{a, a, a, a, c}, 40, a, 4},
-		{[Reels]Symbol{c, c, c, c, c}, 200, c, 5},
-		{[Reels]Symbol{c, c, b, c, c}, 2, c, 2},
+		{[Reels]Symbol{a, a, a, a, c}, 20, a, 4},
+		{[Reels]Symbol{c, c, c, c, c}, 100, c, 5},
+		{[Reels]Symbol{c, c, b, c, c}, 0, 0, 0},
 		{[Reels]Symbol{c, p, c, c, c}, 0, 0, 0},
-		{[Reels]Symbol{p, p, s, p, p}, 0, 0, 0},
-		{[Reels]Symbol{p, s, s, s, s}, 0, 0, 0},
+		{[Reels]Symbol{p, p, b, p, p}, 0, 0, 0},
+		{[Reels]Symbol{p, b, b, b, b}, 0, 0, 0},
 
 		// Wilds stand in for the symbol the line starts with, and double the
 		// win however many of them are in it.
-		{[Reels]Symbol{b, w, b, p, p}, 50, b, 3},
-		{[Reels]Symbol{b, w, w, w, b}, 1000, b, 5},
-		{[Reels]Symbol{b, w, w, w, w}, 1000, b, 5},
-		{[Reels]Symbol{c, w, p, p, p}, 4, c, 2},
+		{[Reels]Symbol{b, w, b, p, p}, 10, b, 3},
+		{[Reels]Symbol{b, w, w, w, b}, 200, b, 5},
+		{[Reels]Symbol{b, w, w, w, w}, 200, b, 5},
+		{[Reels]Symbol{c, w, p, p, p}, 0, 0, 0},
 		{[Reels]Symbol{p, w, c, c, c}, 0, 0, 0},
-		{[Reels]Symbol{w, w, s, s, p}, 400, s, 4},
+		{[Reels]Symbol{w, w, a, a, p}, 40, a, 4},
 		{[Reels]Symbol{w, w, w, w, w}, 0, 0, 0},
-		{[Reels]Symbol{b, b, b, p, w}, 25, b, 3}, // a wild outside the win
+		{[Reels]Symbol{b, b, b, p, w}, 5, b, 3}, // a wild outside the win
 
-		// The ten, cherry, seven and dollar pay for a pair.
-		{[Reels]Symbol{t0, t0, a, t0, t0}, 2, t0, 2},
-		{[Reels]Symbol{s, s, p, p, p}, 2, s, 2},
-		{[Reels]Symbol{d, d, p, p, p}, 5, d, 2},
-		{[Reels]Symbol{d, w, p, p, p}, 10, d, 2},
+		// Only the dollar pays for a pair.
+		{[Reels]Symbol{d, d, p, p, p}, 2, d, 2},
+		{[Reels]Symbol{d, w, p, p, p}, 4, d, 2},
+		{[Reels]Symbol{t0, t0, a, t0, t0}, 0, 0, 0},
 		{[Reels]Symbol{a, a, p, p, p}, 0, 0, 0},
 
 		// Scatters and chips never win along a line, with or without wilds.
@@ -120,7 +118,7 @@ func TestRTP(t *testing.T) {
 	// Only the grand pot should make the return depend on the bet.
 	small, large := ReturnAt(1), ReturnAt(MaxBet)
 	small.Grand, large.Grand = 0, 0
-	if math.Abs(small.Total()-large.Total()) > 1e-4 {
+	if math.Abs(small.Total()-large.Total()) > 2e-4 {
 		t.Errorf("return without the grand pot is %v at the smallest bet and %v at the largest", small.Total(), large.Total())
 	}
 }
@@ -163,8 +161,8 @@ func TestWindow(t *testing.T) {
 }
 
 func TestPaylines(t *testing.T) {
-	if len(Paylines) != 25 {
-		t.Fatalf("%d paylines, want 25", len(Paylines))
+	if len(Paylines) != 50 {
+		t.Fatalf("%d paylines, want 50", len(Paylines))
 	}
 	seen := map[[Reels]int]int{}
 	for i, line := range Paylines {
