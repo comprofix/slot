@@ -137,7 +137,7 @@ func TestMajorOdds(t *testing.T) {
 	m := New(9, 10)
 	majors := 0
 	for range chips {
-		if m.dealChip(MaxBet, true).Jackpot == Major {
+		if m.dealChip(MaxBet, true, chipBets).Jackpot == Major {
 			majors++
 		}
 	}
@@ -145,7 +145,7 @@ func TestMajorOdds(t *testing.T) {
 		t.Errorf("a chip is a major %v of the time at the largest bet, want about %v", got, majorOdds)
 	}
 	for range chips / 20 {
-		if m.dealChip(MaxBet, false).Jackpot == Major {
+		if m.dealChip(MaxBet, false, chipBets).Jackpot == Major {
 			t.Fatal("dealt a second major chip to a feature")
 		}
 	}

@@ -50,6 +50,9 @@ func (g *Game) startLink() {
 		total: g.m.LinkTotal(),
 	}
 	g.message = fmt.Sprintf("%d CHIPS! LINK FEATURE", g.m.Link.Count())
+	if g.m.Link.Big {
+		g.message = "GIANT CHIP! LINK FEATURE"
+	}
 	g.snd.play(g.snd.bigWin)
 }
 
@@ -124,6 +127,11 @@ func (g *Game) finishLink() {
 	case end.MajorWin > 0:
 		g.message = fmt.Sprintf("MAJOR JACKPOT! LINK FEATURE PAYS %d!", end.Win)
 	}
+	// A giant chip on the last free game: the free games end here.
+	if g.free.active && g.m.FreeSpins == 0 {
+		g.free.active = false
+		g.message += fmt.Sprintf("   FREE GAMES WON %d", g.free.win)
+	}
 	g.snd.play(g.snd.bigWin)
 }
 
@@ -132,6 +140,9 @@ func (g *Game) finishLink() {
 func (g *Game) drawLinkGrid(screen *ebiten.Image) {
 	l := &g.link
 	for i := range machine.Reels {
+		if l.state.Big && i >= machine.BigFirst && i <= machine.BigLast {
+			continue // under the giant chip, drawn below
+		}
 		for row := range machine.Rows {
 			x, y := cellCentre(i, row)
 			fillRect(screen, x-reelW/2, y-rowH/2, reelW, rowH, reelBack)
@@ -154,6 +165,14 @@ func (g *Game) drawLinkGrid(screen *ebiten.Image) {
 				}
 			}
 		}
+	}
+	if l.state.Big {
+		// The giant chip that started the feature fills the middle reels,
+		// with its one prize on it.
+		rect := bigRect()
+		screen.SubImage(rect).(*ebiten.Image).Fill(reelBack)
+		x, y := cellCentre(machine.BigReel, machine.Middle)
+		drawChip(screen, x, y, bigScale, g.chipLabel(l.state.Chips[machine.BigReel][machine.Middle], l.state.Bet))
 	}
 }
 
@@ -206,10 +225,10 @@ func (g *Game) drawStatus(screen *ebiten.Image, inFree bool) {
 		text = fmt.Sprintf("LINK FEATURE     RESPINS LEFT %d     TOTAL %d", g.link.state.Respins, g.link.total)
 		c = yellow
 	case inFree && g.free.played == 0:
-		text = fmt.Sprintf("%d FREE SPINS     ALL WINS x%d", g.free.total, machine.FreeSpinMultiplier)
+		text = fmt.Sprintf("%d FREE GAMES     GIANT SYMBOL ON REELS 2 TO 4", g.free.total)
 		c = yellow
 	case inFree:
-		text = fmt.Sprintf("FREE SPIN %d OF %d     ALL WINS x%d", g.free.played, g.free.total, machine.FreeSpinMultiplier)
+		text = fmt.Sprintf("FREE GAME %d OF %d", g.free.played, g.free.total)
 		c = yellow
 	}
 	drawText(screen, text, screenW/2, 74, 15, c, alignCenter, alignCenter)

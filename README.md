@@ -76,15 +76,38 @@ line is shown in turn.
 | 10, J, Q, K, A | Low-paying line symbols |
 | Cherry, plum, bell, dollar | Higher-paying line symbols |
 | Joker | Wild: stands in for any of the symbols above and doubles the win. Reels 2 to 5 only |
-| Dice | Scatter: three or more anywhere pay a prize and win free spins |
+| Dice | Scatter: three or more anywhere pay a prize and win free games |
 | Poker chip | Six or more anywhere start the link feature |
 
-### Free spins
+### Free games
 
 Three, four or five dice anywhere on the reels pay 2, 15 or 100 times the
-total bet and win 8, 12 or 20 free spins. Free spins cost nothing, play by
-themselves at the bet that won them, and pay every win twice over.
-More dice during free spins win more free spins.
+total bet and win 6 free games. Free games cost nothing and play by
+themselves at the bet that won them.
+
+In a free game reels 2, 3 and 4 turn as one and show a single giant symbol,
+which counts as that symbol in each of its nine places. The middle reels
+always match, so a line wins when reel 1 shows the same symbol, and only
+four or five in a row pay:
+
+| Symbol | Four | Five |
+|---|---|---|
+| 10, J, Q, K | 5 | 15 |
+| Ace | 5 | 20 |
+| Cherry, plum | 10 | 25 |
+| Bell | 10 | 50 |
+| Dollar | 10 | 100 |
+
+Three of the giant symbols are special:
+
+| Giant symbol | Chance each game | What it does |
+|---|---|---|
+| Joker | 3% | Wild: every line pays for the symbol on reel 1. It does not double a win in a free game |
+| Chip | 2.5% | Starts the link feature with its nine places held. It carries one prize: 5 to 100 times the total bet, or MINI, MINOR or MAJOR |
+| Dice | 6% | Pays the total bet and adds 3 free games |
+
+Reels 1 and 5 have no dice or chips in a free game, and the joker is on
+reel 5 only.
 
 ### Link feature
 
@@ -98,7 +121,8 @@ link feature:
 3. When the respins run out, or all fifteen positions are full, every chip
    is paid.
 
-It can start during free spins as well.
+A giant chip in a free game starts it as well, with nine positions already
+held; the free games carry on afterwards.
 
 | A chip can carry | Worth |
 |---|---|
@@ -122,7 +146,7 @@ comes up at least once in a hundred million spins.
 
 The game is saved after every spin, so you can close it at any time and
 carry on later with the same credits, bet and jackpot pots, and with any
-free spins or link feature still to play. RESET only ever touches the
+free games or link feature still to play. RESET only ever touches the
 credits: the MAJOR and GRAND pots keep growing until someone wins them.
 
 The save is one small file, `PokerMachine/save.json`, in your settings
@@ -131,7 +155,7 @@ again from scratch, pots included.
 
 ## Layout
 
-- `machine/` holds the rules: reel strips, paylines, paytable, free spins, the
+- `machine/` holds the rules: reel strips, paylines, paytable, free games, the
   link feature, credits and the odds.
   It has no graphics and is covered by tests.
 - `main.go` has the screens, buttons, input and reel animation.
@@ -149,12 +173,13 @@ credits the machine pays back about 92% of what is bet over the long run:
 | From | Share of what is bet |
 |---|---|
 | Line wins | 44% |
-| Dice prizes and free spins | 18% |
+| Dice prizes and free games | 17% |
 | Link chips, with MINI and MINOR | 27% |
 | MAJOR and GRAND pots | 4% |
 
-Free spins come up about once in 68 spins and the link feature about once
-in 105. The return is the same at every bet apart from the GRAND, which
+Free games are won about once in 68 spins, and about seven are played each
+time. The link feature comes up about once in 82 spins, counting those a
+giant chip starts. The return is the same at every bet apart from the GRAND, which
 lifts it to about 94% at the smallest bet. Run the tests to recalculate
 all of this after changing the rules:
 

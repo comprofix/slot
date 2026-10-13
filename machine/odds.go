@@ -81,7 +81,9 @@ func FreeSpinOdds() float64 {
 	return total
 }
 
-// LinkOdds is the chance that a spin starts the link feature.
+// LinkOdds is how many link features each paid spin leads to on average:
+// those the spin starts itself, and those a giant chip starts in the free
+// games it wins.
 func LinkOdds() float64 {
 	total := 0.0
 	for k, p := range showing(Link) {
@@ -89,7 +91,7 @@ func LinkOdds() float64 {
 			total += p
 		}
 	}
-	return total
+	return total + freeGames()*bigOdds(Link)
 }
 
 // linkEnd works out how a link feature ends from a given position: the
@@ -151,8 +153,8 @@ func binomial(n, k int, p float64) float64 {
 // from. Each part is a fraction of the money bet.
 type Returns struct {
 	Lines  float64 // line wins on paid spins
-	Dice   float64 // scatter prizes, and everything free spins win on lines
-	Link   float64 // link chips, with the mini and minor jackpots
+	Dice   float64 // scatter prizes, and what free games win on lines
+	Link   float64 // link chips, giant ones too, with the mini and minor jackpots
 	Major  float64 // the major pot's starting amount
 	Grand  float64 // the grand pot's starting amount
 	Growth float64 // what play adds to the two pots, all paid out in time
@@ -163,37 +165,61 @@ func (r Returns) Total() float64 {
 	return r.Lines + r.Dice + r.Link + r.Major + r.Grand + r.Growth
 }
 
+// bigOdds is the chance that a free game deals sym as its giant symbol.
+func bigOdds(sym Symbol) float64 {
+	return float64(BigWeights[sym]) / float64(bigTotal())
+}
+
+// freeLineReturn is the fraction of the bet on a line that a free game pays
+// back in line wins. As with lineReturn, every payline has the same odds.
+func freeLineReturn() float64 {
+	first, last := FreeStrips[0], FreeStrips[Reels-1]
+	total := 0
+	for big, w := range BigWeights {
+		for _, a := range first {
+			for _, b := range last {
+				s := Symbol(big)
+				pay, _, _ := evaluate([Reels]Symbol{a, s, s, s, b}, &FreePays, 1)
+				total += w * pay
+			}
+		}
+	}
+	return float64(total) / float64(bigTotal()*len(first)*len(last))
+}
+
+// freeGames is the number of free games each paid spin leads to on average.
+// A giant dice adds more, so the games first awarded are not the whole of
+// it.
+func freeGames() float64 {
+	awarded := 0.0
+	for k, p := range showing(Scatter) {
+		awarded += p * float64(FreeSpinAwards[min(k, Reels)])
+	}
+	return awarded / (1 - bigOdds(Scatter)*BigScatterGames)
+}
+
 // ReturnAt works out the return to player at a total bet. The bet matters
 // only to the grand pot: it pays the same whatever the bet, and although it
 // is made harder to win at small bets, that cannot level it completely.
 func ReturnAt(bet int) Returns {
 	var r Returns
 
-	// What one spin pays on lines and scatters, and how many free spins it
-	// awards on average.
-	lines := lineReturn()
-	scatters, awarded := 0.0, 0.0
+	scatters := 0.0
 	for k, p := range showing(Scatter) {
 		scatters += p * float64(ScatterPays[min(k, Reels)])
-		awarded += p * float64(FreeSpinAwards[min(k, Reels)])
 	}
-	// Free spins can award more free spins, so each paid spin leads to
-	// 1/(1-awarded) spins in all, the rest of them free.
-	spins := 1 / (1 - awarded)
-	free := spins - 1
-	r.Lines = lines
-	r.Dice = scatters + FreeSpinMultiplier*free*(lines+scatters)
+	free := freeGames()
+	r.Lines = lineReturn()
+	r.Dice = scatters + free*(freeLineReturn()+bigOdds(Scatter)*BigScatterPay)
 
-	// What an ordinary chip is worth on average, in total bets.
-	weight, worth := 0, 0
-	for _, c := range chipBets {
-		weight += c.weight
-		worth += c.weight * c.bets
-	}
-
+	// What a chip is worth on average, in total bets: an ordinary one, and
+	// the giant one of a free game.
 	major := majorOdds * betShare(bet)
-	chip := (1 - major) * (miniOdds*MiniBets + minorOdds*MinorBets +
-		(1-miniOdds-minorOdds)*float64(worth)/float64(weight))
+	worth := func(list chipList) float64 {
+		return (1 - major) * (miniOdds*MiniBets + minorOdds*MinorBets +
+			(1-miniOdds-minorOdds)*list.worth())
+	}
+	chip, bigChip := worth(chipBets), worth(bigChipBets)
 
 	memo := map[[2]int][2]float64{}
 	for k, p := range showing(Link) {
@@ -201,10 +227,20 @@ func ReturnAt(bet int) Returns {
 			continue
 		}
 		chips, full := linkEnd(k, LinkRespins, grandChance(bet), memo)
-		r.Link += p * spins * chips * chip
-		r.Major += p * spins * chips * major * MajorStart / float64(bet)
-		r.Grand += p * spins * full * GrandStart / float64(bet)
+		r.Link += p * chips * chip
+		r.Major += p * chips * major * MajorStart / float64(bet)
+		r.Grand += p * full * GrandStart / float64(bet)
 	}
+
+	// A giant chip starts the feature with its nine cells held: it pays its
+	// own prize, and the chips that land in the cells left pay theirs.
+	const held = (BigLast - BigFirst + 1) * Rows
+	chips, full := linkEnd(held, LinkRespins, grandChance(bet), memo)
+	p := free * bigOdds(Link)
+	r.Link += p * (bigChip + (chips-held)*chip)
+	r.Major += p * (1 + chips - held) * major * MajorStart / float64(bet)
+	r.Grand += p * full * GrandStart / float64(bet)
+
 	r.Growth = float64(majorGrowth+grandGrowth) / potUnit
 	return r
 }

@@ -61,6 +61,7 @@ type reel struct {
 	dist     float64
 	tick     int
 	dur      int
+	to       int // the strip index it will stop at
 	spinning bool
 }
 
@@ -85,6 +86,10 @@ type Game struct {
 	link linkView
 	spun bool // a spin has been played, so the chips showing were dealt
 
+	// freeView is set while the reels on screen are those of a free game:
+	// reels 1 and 5 on their free-game strips and a giant symbol between.
+	freeView bool
+
 	auto bool // spins are being played automatically
 
 	savePath   string // where the game is kept; empty if it cannot be
@@ -93,13 +98,13 @@ type Game struct {
 	byeTicks int
 }
 
-// freeSpins tracks a run of free spins, from the spin that wins them until
+// freeSpins tracks a run of free games, from the spin that wins them until
 // the last one has been played.
 type freeSpins struct {
 	active bool
 	total  int // spins awarded so far, counting any won along the way
 	played int
-	win    int // credits won by the free spins
+	win    int // credits won by the free games
 }
 
 func newGame() *Game {
@@ -125,7 +130,7 @@ func newGame() *Game {
 func (g *Game) resume() {
 	if n := g.m.FreeSpins; n > 0 {
 		g.free = freeSpins{active: true, total: n}
-		g.message = fmt.Sprintf("%d FREE SPINS TO PLAY", n)
+		g.message = fmt.Sprintf("%d FREE GAMES TO PLAY", n)
 	}
 	if g.m.Link != nil {
 		g.link = linkView{
@@ -392,6 +397,29 @@ func (g *Game) insertCoin() {
 	g.save()
 }
 
+// bigOrder is the order the giant symbols pass in as the middle reels turn
+// in a free game. It is for show: the giant symbol is dealt, not read off a
+// strip.
+var bigOrder = []machine.Symbol{
+	machine.King, machine.Cherry, machine.Ten, machine.Link, machine.Queen,
+	machine.Bell, machine.Ace, machine.Wild, machine.Jack, machine.Plum,
+	machine.Scatter, machine.Dollar,
+}
+
+// strip is the strip a reel is turning on: its own, or in a free game the
+// free-game strip for reels 1 and 5 and the giant symbols for the one in
+// the middle. The other two middle reels are hidden behind the giant
+// symbol and have none.
+func (g *Game) strip(i int) []machine.Symbol {
+	switch {
+	case !g.freeView:
+		return machine.Strips[i]
+	case i == machine.BigReel:
+		return bigOrder
+	}
+	return machine.FreeStrips[i]
+}
+
 // spin decides the outcome straight away, then sets each reel turning
 // towards its stop. Reels further right travel further and stop later.
 func (g *Game) spin() {
@@ -420,16 +448,33 @@ func (g *Game) spin() {
 	g.result = res
 	g.spun = true
 	g.spinning = true
+	g.freeView = res.Free
 	g.showLines = 0
 	g.credits = g.m.Credits - res.Win
 	g.snd.play(g.snd.start)
 
 	for i := range g.reels {
 		r := &g.reels[i]
-		n := len(machine.Strips[i])
-		ahead := ((res.Stops[i]-int(r.pos))%n + n) % n
+		strip := g.strip(i)
+		if strip == nil {
+			r.spinning = false
+			continue
+		}
+		r.to = res.Stops[i]
+		if g.freeView && i == machine.BigReel {
+			r.to = slices.Index(bigOrder, res.Big)
+		}
+		n := len(strip)
+		// A reel may have been left on a longer strip than the one it is
+		// about to turn on.
+		r.pos = math.Mod(r.pos, float64(n))
+		ahead := ((r.to-int(r.pos))%n + n) % n
 		r.from = r.pos
 		r.dist = float64(n*(i+1) + ahead)
+		if g.freeView && i == machine.BigReel {
+			// The giant symbols are three rows high, so fewer need to pass.
+			r.dist = float64(n + ahead)
+		}
 		r.tick = 0
 		r.dur = 60 + 25*i
 		r.spinning = true
@@ -444,7 +489,7 @@ func (g *Game) advanceReels() {
 		}
 		r.tick++
 		if r.tick >= r.dur {
-			r.pos = float64(g.result.Stops[i])
+			r.pos = float64(r.to)
 			r.spinning = false
 			g.snd.play(g.snd.stop)
 			continue
@@ -470,8 +515,10 @@ func (g *Game) advanceReels() {
 	}
 
 	switch {
+	case g.result.Free && g.result.FreeSpinsWon > 0:
+		g.message = fmt.Sprintf("GIANT DICE! %d MORE FREE GAMES AND YOU WIN %d!", g.result.FreeSpinsWon, g.win)
 	case g.result.FreeSpinsWon > 0:
-		g.message = fmt.Sprintf("%d DICE! %d FREE SPINS", g.result.Scatters, g.result.FreeSpinsWon)
+		g.message = fmt.Sprintf("%d DICE! %d FREE GAMES", g.result.Scatters, g.result.FreeSpinsWon)
 		if g.win > 0 {
 			g.message += fmt.Sprintf(" AND YOU WIN %d!", g.win)
 		}
@@ -482,10 +529,11 @@ func (g *Game) advanceReels() {
 	default:
 		g.message = "NO WIN"
 	}
-	// The last free spin: report what the whole run won.
-	if g.free.active && g.m.FreeSpins == 0 {
+	// The last free game: report what the whole run won. A giant chip on it
+	// leaves that until the link feature is over.
+	if g.free.active && g.m.FreeSpins == 0 && !g.result.LinkStarted {
 		g.free.active = false
-		g.message = fmt.Sprintf("FREE SPINS OVER - THEY WON %d CREDITS", g.free.win)
+		g.message = fmt.Sprintf("FREE GAMES OVER - THEY WON %d CREDITS", g.free.win)
 	}
 
 	switch {
@@ -555,7 +603,7 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 }
 
 func (g *Game) drawHelp(screen *ebiten.Image) {
-	drawText(screen, "HOW TO PLAY", screenW/2, 30, 34, yellow, alignCenter, alignStart)
+	drawText(screen, "HOW TO PLAY", screenW/2, 24, 32, yellow, alignCenter, alignStart)
 
 	top := machine.BetChoices[len(machine.BetChoices)-1]
 	lines := []string{
@@ -566,7 +614,9 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"Four or five in a row pay more. Two dollars in a row pay too.",
 		"A win on a line is multiplied by the bet per line.",
 		"The joker is wild on reels 2 to 5 and doubles any win it helps make.",
-		"Three or more dice anywhere win free spins, with all wins doubled.",
+		fmt.Sprintf("Three or more dice anywhere win %d free games. In a free game reels", machine.FreeSpinAwards[3]),
+		"2 to 4 show one giant symbol and the joker does not double.",
+		fmt.Sprintf("A giant dice adds %d games. A giant chip starts the link feature.", machine.BigScatterGames),
 		fmt.Sprintf("%d or more chips lock in place and respin. Each chip pays 1 to", machine.LinkTrigger),
 		fmt.Sprintf("%d times the total bet, or MINI (x%d), MINOR (x%d) or the MAJOR.",
 			machine.TopChipBets, machine.MiniBets, machine.MinorBets),
@@ -575,7 +625,7 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		fmt.Sprintf("often the more you bet: most often at %d a line on %d lines.", top, len(machine.Paylines)),
 	}
 	for i, l := range lines {
-		drawText(screen, l, screenW/2-280, 76+float64(i)*20, 15, white, alignStart, alignStart)
+		drawText(screen, l, screenW/2-280, 66+float64(i)*19, 15, white, alignStart, alignStart)
 	}
 
 	keys := [][2]string{
@@ -590,12 +640,12 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"ESC", "back to the menu"},
 	}
 	for i, k := range keys {
-		y := 346 + float64(i)*20
-		drawText(screen, k[0], screenW/2-70, y, 15, lightRed, alignEnd, alignStart)
-		drawText(screen, k[1], screenW/2-45, y, 15, white, alignStart, alignStart)
+		y := 360 + float64(i)*18
+		drawText(screen, k[0], screenW/2-70, y, 14, lightRed, alignEnd, alignStart)
+		drawText(screen, k[1], screenW/2-45, y, 14, white, alignStart, alignStart)
 	}
-	drawText(screen, "The buttons on screen can be clicked with the mouse.", screenW/2, 530, 14, lightGray, alignCenter, alignStart)
-	drawText(screen, "PRESS ENTER TO RETURN", screenW/2, 552, 20, lightBlue, alignCenter, alignStart)
+	drawText(screen, "The buttons on screen can be clicked with the mouse.", screenW/2, 527, 13, lightGray, alignCenter, alignStart)
+	drawText(screen, "PRESS ENTER TO RETURN", screenW/2, 550, 20, lightBlue, alignCenter, alignStart)
 }
 
 func (g *Game) drawAbout(screen *ebiten.Image) {
@@ -640,7 +690,7 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	drawStat(screen, "BET / LINE", g.m.BetPerLine, 1, white)
 	drawStat(screen, "LINES", g.m.Lines, 2, white)
 	if inFree {
-		drawStat(screen, "FREE SPINS WIN", g.free.win, 3, yellow)
+		drawStat(screen, "FREE GAMES WIN", g.free.win, 3, yellow)
 	} else {
 		drawStat(screen, "TOTAL BET", g.m.TotalBet(), 3, white)
 	}
@@ -672,7 +722,7 @@ func (g *Game) drawPlay(screen *ebiten.Image) {
 	case g.linkBusy():
 		spinLabel = "RESPIN"
 	case locked:
-		spinLabel = "FREE SPIN"
+		spinLabel = "FREE GAME"
 	case g.m.Credits == 0 && !g.spinning:
 		spinLabel = "NEW GAME"
 	}
@@ -721,8 +771,13 @@ func (g *Game) drawWins(screen *ebiten.Image, win *machine.LineWin) {
 			drawPayline(screen, l, 2)
 		}
 	}
-	// Winning scatters flash wherever they landed.
+	// Winning dice flash wherever they landed; a giant one as a whole.
 	if !g.spinning && g.result.FreeSpinsWon > 0 && g.ticks/15%2 == 0 {
+		if g.result.Free {
+			r := bigRect()
+			frameRect(screen, float64(r.Min.X)+2, float64(r.Min.Y)+2, float64(r.Dx())-4, float64(r.Dy())-4, 4, white)
+			return
+		}
 		for i, col := range g.result.Grid {
 			for row, sym := range col {
 				if sym == machine.Scatter {
@@ -790,12 +845,19 @@ func drawPayline(screen *ebiten.Image, line int, width float64) {
 // drawReel draws the part of a reel's strip that shows in its window. The
 // sub-image clips symbols that are part-way in or out.
 func (g *Game) drawReel(screen *ebiten.Image, i int) {
+	strip := g.strip(i)
+	if strip == nil {
+		return // hidden behind the giant symbol
+	}
+	if g.freeView && i == machine.BigReel {
+		g.drawBigReel(screen)
+		return
+	}
 	cx, cy := cellCentre(i, machine.Middle)
 	x := int(cx) - reelW/2
 	window := screen.SubImage(image.Rect(x, reelsY, x+reelW, reelsY+reelsH)).(*ebiten.Image)
 	window.Fill(reelBack)
 
-	strip := machine.Strips[i]
 	n := len(strip)
 	base := math.Floor(g.reels[i].pos)
 	frac := g.reels[i].pos - base
@@ -808,6 +870,50 @@ func (g *Game) drawReel(screen *ebiten.Image, i int) {
 		}
 		drawSymbol(window, strip[stop], cx, y, reelScale)
 	}
+}
+
+// bigScale is the size of a giant symbol: one that fills reels 2 to 4.
+const bigScale = 2.6
+
+// bigRect is the part of the screen the giant symbol covers.
+func bigRect() image.Rectangle {
+	left, _ := cellCentre(machine.BigFirst, machine.Middle)
+	right, _ := cellCentre(machine.BigLast, machine.Middle)
+	return image.Rect(int(left)-reelW/2, reelsY, int(right)+reelW/2, reelsY+reelsH)
+}
+
+// drawBigReel draws the middle reels of a free game: one reel of giant
+// symbols, each as high as the window.
+func (g *Game) drawBigReel(screen *ebiten.Image) {
+	rect := bigRect()
+	window := screen.SubImage(rect).(*ebiten.Image)
+	window.Fill(reelBack)
+
+	r := &g.reels[machine.BigReel]
+	cx, cy := cellCentre(machine.BigReel, machine.Middle)
+	n := len(bigOrder)
+	base := math.Floor(r.pos)
+	frac := r.pos - base
+	for k := -1; k <= 1; k++ {
+		at := ((int(base)+k)%n + n) % n
+		y := cy - (float64(k)-frac)*reelsH
+		// Only the giant chip that has landed shows what it was dealt.
+		chip := passingChips[at%len(passingChips)]
+		if !r.spinning && k == 0 {
+			chip = g.result.Chips[machine.BigReel][machine.Middle]
+		}
+		g.drawBig(window, bigOrder[at], chip, cx, y)
+	}
+}
+
+// drawBig draws a giant symbol centred on (cx, cy). chip is what it carries
+// if it is a chip.
+func (g *Game) drawBig(dst *ebiten.Image, sym machine.Symbol, chip machine.Chip, cx, cy float64) {
+	if sym == machine.Link {
+		drawChip(dst, cx, cy, bigScale, g.chipLabel(chip, g.m.TotalBet()))
+		return
+	}
+	drawSymbol(dst, sym, cx, cy, bigScale)
 }
 
 // chipAt is what the chip at a reel stop shows. The chips the last spin
@@ -858,9 +964,21 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 	edges := [machine.Reels + 1]float64{2: 126, 3: 91, 4: 49, 5: 0}
 	col := func(n int) float64 { return panelX + panelW - 12 - edges[n] }
 
+	// A free game has a paytable of its own. It stays up while free games
+	// are being played, and afterwards for as long as the last one's win
+	// is on show.
+	pays, title := &machine.Pays, "PAYS"
+	free := g.freeView && (g.free.active || g.m.FreeSpins > 0 || win != nil)
+	if free {
+		pays, title = &machine.FreePays, "FREE GAMES PAY"
+	}
+
 	frameRect(screen, panelX, top, panelW, panelH, 2, magenta)
-	drawText(screen, "PAYS", panelX+panelW/2, top+5, 15, yellow, alignCenter, alignStart)
+	drawText(screen, title, panelX+panelW/2, top+5, 15, yellow, alignCenter, alignStart)
 	for n := 2; n <= machine.Reels; n++ {
+		if free && n < 4 {
+			continue // nothing pays for fewer than four in a free game
+		}
 		drawText(screen, fmt.Sprintf("x%d", n), col(n), top+25, 12, yellow, alignEnd, alignStart)
 	}
 
@@ -874,7 +992,7 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 		}
 		drawSymbol(screen, sym, panelX+22, cy, icon)
 		for n := 2; n <= machine.Reels; n++ {
-			pay := machine.Pays[sym][n] * g.m.BetPerLine
+			pay := pays[sym][n] * g.m.BetPerLine
 			if pay == 0 {
 				continue
 			}
@@ -894,10 +1012,17 @@ func (g *Game) drawPaytable(screen *ebiten.Image, win *machine.LineWin) {
 	bet := g.m.TotalBet()
 	notes := []string{
 		fmt.Sprintf("JOKER: WILD ON REELS 2-5, PAYS x%d", machine.WildMultiplier),
-		fmt.Sprintf("3+ DICE: FREE SPINS, WINS x%d", machine.FreeSpinMultiplier),
+		fmt.Sprintf("3+ DICE: %d FREE GAMES", machine.FreeSpinAwards[3]),
 		fmt.Sprintf("%d+ CHIPS: LINK FEATURE", machine.LinkTrigger),
 		fmt.Sprintf("DICE PAY %d / %d / %d",
 			machine.ScatterPays[3]*bet, machine.ScatterPays[4]*bet, machine.ScatterPays[5]*bet),
+	}
+	if free {
+		notes = []string{
+			"JOKER: WILD, DOES NOT DOUBLE",
+			fmt.Sprintf("GIANT DICE: PAYS %d, %d MORE GAMES", machine.BigScatterPay*bet, machine.BigScatterGames),
+			"GIANT CHIP: LINK FEATURE",
+		}
 	}
 	for j, l := range notes {
 		drawText(screen, l, panelX+10, y+14+float64(j)*12, 9, lightGray, alignStart, alignStart)

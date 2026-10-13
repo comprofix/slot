@@ -167,14 +167,11 @@ var Pays = [NumSymbols][Reels + 1]int{
 
 // Scatters pay wherever they land, not along paylines. By how many are
 // showing, ScatterPays is the prize per credit of the total bet and
-// FreeSpinAwards the free spins won.
+// FreeSpinAwards the free games won: the same for three, four or five.
 var (
 	ScatterPays    = [Reels + 1]int{3: 2, 4: 15, 5: 100}
-	FreeSpinAwards = [Reels + 1]int{3: 8, 4: 12, 5: 20}
+	FreeSpinAwards = [Reels + 1]int{3: 6, 4: 6, 5: 6}
 )
-
-// FreeSpinMultiplier multiplies every win during free spins.
-const FreeSpinMultiplier = 2
 
 // WildMultiplier multiplies a line win that a wild helps to make. Several
 // wilds in one win still multiply it only once.
@@ -185,6 +182,12 @@ const WildMultiplier = 2
 // make up the win. Wilds count as the symbol the line starts with, and a
 // win with a wild in it is multiplied by WildMultiplier.
 func Evaluate(line [Reels]Symbol) (pay int, sym Symbol, matched int) {
+	return evaluate(line, &Pays, WildMultiplier)
+}
+
+// evaluate works a payline out against a paytable, multiplying a win that a
+// wild helps to make.
+func evaluate(line [Reels]Symbol, pays *[NumSymbols][Reels + 1]int, wildMultiplier int) (pay int, sym Symbol, matched int) {
 	// The win belongs to the first symbol that is not a wild.
 	sym = Wild
 	for _, s := range line {
@@ -203,12 +206,12 @@ func Evaluate(line [Reels]Symbol) (pay int, sym Symbol, matched int) {
 		}
 		run++
 	}
-	pay = Pays[sym][run]
+	pay = pays[sym][run]
 	if pay == 0 {
 		return 0, 0, 0
 	}
 	if wild {
-		pay *= WildMultiplier
+		pay *= wildMultiplier
 	}
 	return pay, sym, run
 }
@@ -216,7 +219,10 @@ func Evaluate(line [Reels]Symbol) (pay int, sym Symbol, matched int) {
 // Window returns the three symbols showing on a reel, top to bottom, when
 // it rests at the given stop.
 func Window(reel, stop int) [Rows]Symbol {
-	s := Strips[reel]
+	return window(Strips[reel], stop)
+}
+
+func window(s []Symbol, stop int) [Rows]Symbol {
 	n := len(s)
 	return [Rows]Symbol{s[(stop+1)%n], s[stop], s[(stop-1+n)%n]}
 }
@@ -236,12 +242,13 @@ type Result struct {
 	Grid  [Reels][Rows]Symbol // what each reel shows, top to bottom
 	Wins  []LineWin           // winning paylines, in payline order
 
-	Free         bool // this was a free spin
-	Scatters     int  // scatters showing
-	ScatterWin   int  // credits won by the scatters
-	FreeSpinsWon int  // free spins this spin awarded
+	Free         bool   // this was a free game
+	Big          Symbol // on a free game, the giant symbol across reels 2 to 4
+	Scatters     int    // scatters showing
+	ScatterWin   int    // credits won by the scatters
+	FreeSpinsWon int    // free spins this spin awarded
 
-	Chips       [Reels][Rows]Chip // what each link chip showing carries
+	Chips       [Reels][Rows]Chip // what each link chip showing carries; a giant chip's prize is on its middle cell
 	LinkStarted bool              // enough chips landed to start the link feature
 
 	Win int // total credits won
@@ -326,34 +333,31 @@ func (m *Machine) TotalBet() int {
 }
 
 // Spin stops each reel at random and pays the wins on every payline being
-// played, along with any scatter prize. It plays a free spin if any are
+// played, along with any scatter prize. It plays a free game if any are
 // waiting; otherwise it takes the bet, and reports false and changes
 // nothing if there are too few credits. It also reports false while a link
 // feature is in progress: that is played out with Respin.
 //
-// Lines and BetPerLine must not be changed while free spins are waiting or
+// Lines and BetPerLine must not be changed while free games are waiting or
 // a link feature is in progress: they are played at the bet that won them.
 func (m *Machine) Spin() (Result, bool) {
 	if m.Link != nil {
 		return Result{}, false
 	}
 	m.stir()
-	var r Result
-	bet := m.TotalBet()
-	multiplier := 1
 	if m.FreeSpins > 0 {
 		m.FreeSpins--
-		r.Free = true
-		multiplier = FreeSpinMultiplier
-	} else {
-		if m.Credits < bet {
-			return Result{}, false
-		}
-		m.Credits -= bet
-		// A cut of every bet goes into the two jackpot pots.
-		m.majorPot += bet * majorGrowth
-		m.grandPot += bet * grandGrowth
+		return m.freeGame(), true
 	}
+	var r Result
+	bet := m.TotalBet()
+	if m.Credits < bet {
+		return Result{}, false
+	}
+	m.Credits -= bet
+	// A cut of every bet goes into the two jackpot pots.
+	m.majorPot += bet * majorGrowth
+	m.grandPot += bet * grandGrowth
 
 	link := Feature{Bet: bet, Respins: LinkRespins}
 	for i := range Reels {
@@ -364,24 +368,13 @@ func (m *Machine) Spin() (Result, bool) {
 			case Scatter:
 				r.Scatters++
 			case Link:
-				link.Chips[i][row] = m.dealChip(bet, !link.hasMajor())
+				link.Chips[i][row] = m.dealChip(bet, !link.hasMajor(), chipBets)
 				link.Held[i][row] = true
 			}
 		}
 	}
-	for l := range m.Lines {
-		var line [Reels]Symbol
-		for i, row := range Paylines[l] {
-			line[i] = r.Grid[i][row]
-		}
-		if pay, sym, matched := Evaluate(line); pay > 0 {
-			win := pay * m.BetPerLine * multiplier
-			doubled := pay > Pays[sym][matched]
-			r.Wins = append(r.Wins, LineWin{Line: l, Symbol: sym, Matched: matched, Doubled: doubled, Win: win})
-			r.Win += win
-		}
-	}
-	r.ScatterWin = ScatterPays[min(r.Scatters, Reels)] * bet * multiplier
+	m.payLines(&r, &Pays, WildMultiplier)
+	r.ScatterWin = ScatterPays[min(r.Scatters, Reels)] * bet
 	r.Win += r.ScatterWin
 	r.FreeSpinsWon = FreeSpinAwards[min(r.Scatters, Reels)]
 
@@ -397,6 +390,23 @@ func (m *Machine) Spin() (Result, bool) {
 	m.Credits += r.Win
 	m.FreeSpins += r.FreeSpinsWon
 	return r, true
+}
+
+// payLines works out the wins on the paylines being played from the grid
+// in r, and adds them to it.
+func (m *Machine) payLines(r *Result, pays *[NumSymbols][Reels + 1]int, wildMultiplier int) {
+	for l := range m.Lines {
+		var line [Reels]Symbol
+		for i, row := range Paylines[l] {
+			line[i] = r.Grid[i][row]
+		}
+		if pay, sym, matched := evaluate(line, pays, wildMultiplier); pay > 0 {
+			win := pay * m.BetPerLine
+			doubled := pay > pays[sym][matched]
+			r.Wins = append(r.Wins, LineWin{Line: l, Symbol: sym, Matched: matched, Doubled: doubled, Win: win})
+			r.Win += win
+		}
+	}
 }
 
 // InsertCoin adds credits, so play can go on after they run out.

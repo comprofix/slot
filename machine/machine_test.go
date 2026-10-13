@@ -110,7 +110,7 @@ func TestRTP(t *testing.T) {
 	r := ReturnAt(bet)
 	t.Logf("return to player %.2f%% at a bet of %d: lines %.2f%%, dice %.2f%%, link %.2f%%, major %.2f%%, grand %.2f%%, pot growth %.2f%%",
 		r.Total()*100, bet, r.Lines*100, r.Dice*100, r.Link*100, r.Major*100, r.Grand*100, r.Growth*100)
-	t.Logf("free spins 1 in %.0f, link feature 1 in %.0f", 1/FreeSpinOdds(), 1/LinkOdds())
+	t.Logf("free games won 1 spin in %.0f, %.1f played each time; link feature 1 spin in %.0f", 1/FreeSpinOdds(), freeGames()/FreeSpinOdds(), 1/LinkOdds())
 	t.Logf("return at a bet of 1: %.2f%%; at %d: %.2f%%", RTP(1)*100, MaxBet, RTP(MaxBet)*100)
 	if got := r.Total(); math.Abs(got-0.92) > 0.005 {
 		t.Errorf("RTP(%d) = %v, want about 0.92", bet, got)
@@ -182,11 +182,11 @@ func TestPaylines(t *testing.T) {
 }
 
 // The result of every spin should agree with the grid it reports, line by
-// line, and free spins should cost nothing and pay double.
+// line, and free games should cost nothing and follow their own rules.
 func TestSpinAccounting(t *testing.T) {
 	m := New(1, 2)
-	freeSpins, links := 0, 0
-	for n := range 100000 {
+	freeGames, links, bigLinks := 0, 0, 0
+	for n := range 300000 {
 		if m.FreeSpins == 0 {
 			m.Credits = StartCredits
 			m.Lines = LineChoices[n%len(LineChoices)]
@@ -199,22 +199,32 @@ func TestSpinAccounting(t *testing.T) {
 		if !ok {
 			t.Fatalf("Spin refused with %d credits and bet %d", before, m.TotalBet())
 		}
-		cost, multiplier := m.TotalBet(), 1
-		if waiting > 0 {
-			cost, multiplier = 0, FreeSpinMultiplier
-			freeSpins++
+		free := waiting > 0
+		cost, pays, wild := m.TotalBet(), &Pays, WildMultiplier
+		if free {
+			cost, pays, wild = 0, &FreePays, 1
+			freeGames++
 		}
-		if r.Free != (waiting > 0) {
-			t.Fatalf("Free = %v with %d free spins waiting", r.Free, waiting)
+		if r.Free != free {
+			t.Fatalf("Free = %v with %d free games waiting", r.Free, waiting)
 		}
 		if m.majorPot != major+cost*majorGrowth || m.grandPot != grand+cost*grandGrowth {
 			t.Fatalf("pots grew by %d and %d on a spin costing %d", m.majorPot-major, m.grandPot-grand, cost)
 		}
 
+		// The grid: every reel from its strip on a paid spin; on a free
+		// game reels 1 and 5 from theirs and the giant symbol between.
 		scatters, chips := 0, 0
 		for i, stop := range r.Stops {
-			if r.Grid[i] != Window(i, stop) {
-				t.Fatalf("reel %d grid %v does not match stop %d", i, r.Grid[i], stop)
+			want := Window(i, stop)
+			switch {
+			case free && i >= BigFirst && i <= BigLast:
+				want = [Rows]Symbol{r.Big, r.Big, r.Big}
+			case free:
+				want = FreeWindow(i, stop)
+			}
+			if r.Grid[i] != want {
+				t.Fatalf("reel %d shows %v, want %v", i+1, r.Grid[i], want)
 			}
 			for row, s := range r.Grid[i] {
 				switch s {
@@ -222,8 +232,11 @@ func TestSpinAccounting(t *testing.T) {
 					scatters++
 				case Link:
 					chips++
-					if c := r.Chips[i][row]; c.Jackpot == NoJackpot && c.Bets == 0 {
-						t.Fatalf("the chip at reel %d row %d carries nothing", i, row)
+					c := r.Chips[i][row]
+					empty := c.Jackpot == NoJackpot && c.Bets == 0
+					// Only the middle cell of a giant chip carries its prize.
+					if want := free && !(i == BigReel && row == Middle); empty != want {
+						t.Fatalf("the chip at reel %d row %d carries %+v", i+1, row, c)
 					}
 				}
 			}
@@ -236,9 +249,9 @@ func TestSpinAccounting(t *testing.T) {
 			for i, row := range Paylines[l] {
 				line[i] = r.Grid[i][row]
 			}
-			if pay, sym, matched := Evaluate(line); pay > 0 {
-				win := pay * m.BetPerLine * multiplier
-				wins = append(wins, LineWin{l, sym, matched, pay > Pays[sym][matched], win})
+			if pay, sym, matched := evaluate(line, pays, wild); pay > 0 {
+				win := pay * m.BetPerLine
+				wins = append(wins, LineWin{l, sym, matched, pay > pays[sym][matched], win})
 				total += win
 			}
 		}
@@ -251,28 +264,39 @@ func TestSpinAccounting(t *testing.T) {
 			}
 		}
 
-		scatterWin := ScatterPays[scatters] * m.TotalBet() * multiplier
+		// Dice: by their number on a paid spin; a giant one on a free game.
+		scatterWin, awarded := ScatterPays[min(scatters, Reels)]*m.TotalBet(), FreeSpinAwards[min(scatters, Reels)]
+		if free {
+			scatterWin, awarded = 0, 0
+			if r.Big == Scatter {
+				scatterWin, awarded = BigScatterPay*m.TotalBet(), BigScatterGames
+			}
+		}
 		total += scatterWin
-		if r.Scatters != scatters || r.ScatterWin != scatterWin || r.FreeSpinsWon != FreeSpinAwards[scatters] {
-			t.Fatalf("scatters %d paying %d with %d free spins; want %d, %d, %d",
-				r.Scatters, r.ScatterWin, r.FreeSpinsWon, scatters, scatterWin, FreeSpinAwards[scatters])
+		if r.Scatters != scatters || r.ScatterWin != scatterWin || r.FreeSpinsWon != awarded {
+			t.Fatalf("scatters %d paying %d with %d free games; want %d, %d, %d",
+				r.Scatters, r.ScatterWin, r.FreeSpinsWon, scatters, scatterWin, awarded)
 		}
 		if r.Win != total || m.Credits != before-cost+total {
 			t.Fatalf("win %d and credits %d, want %d and %d", r.Win, m.Credits, total, before-cost+total)
 		}
-		if want := max(waiting-1, 0) + r.FreeSpinsWon; m.FreeSpins != want {
-			t.Fatalf("%d free spins waiting, want %d", m.FreeSpins, want)
+		if want := max(waiting-1, 0) + awarded; m.FreeSpins != want {
+			t.Fatalf("%d free games waiting, want %d", m.FreeSpins, want)
 		}
 
-		// Six or more chips start the link feature, which must be played
-		// out before the next spin.
-		if r.LinkStarted != (chips >= LinkTrigger) || (m.Link != nil) != r.LinkStarted {
+		// Six or more chips start the link feature, as does a giant chip. It
+		// must be played out before the next spin.
+		started := chips >= LinkTrigger
+		if r.LinkStarted != started || (m.Link != nil) != started {
 			t.Fatalf("%d chips showing: LinkStarted = %v, feature in progress = %v", chips, r.LinkStarted, m.Link != nil)
 		}
-		if r.LinkStarted {
+		if started {
 			links++
-			if m.Link.Count() != chips || m.Link.Bet != m.TotalBet() {
-				t.Fatalf("feature holds %d chips at bet %d, want %d at %d", m.Link.Count(), m.Link.Bet, chips, m.TotalBet())
+			if m.Link.Big {
+				bigLinks++
+			}
+			if m.Link.Count() != chips || m.Link.Bet != m.TotalBet() || m.Link.Big != free {
+				t.Fatalf("feature holds %d chips at bet %d (giant chip: %v), want %d at %d", m.Link.Count(), m.Link.Bet, m.Link.Big, chips, m.TotalBet())
 			}
 			if _, ok := m.Spin(); ok {
 				t.Fatal("Spin succeeded during a link feature")
@@ -284,8 +308,8 @@ func TestSpinAccounting(t *testing.T) {
 			}
 		}
 	}
-	if freeSpins == 0 || links == 0 {
-		t.Errorf("played %d free spins and %d link features; want some of each", freeSpins, links)
+	if freeGames == 0 || links == 0 || bigLinks == 0 {
+		t.Errorf("played %d free games and %d link features, %d from a giant chip; want some of each", freeGames, links, bigLinks)
 	}
 }
 
@@ -298,7 +322,7 @@ func TestSpinReturn(t *testing.T) {
 	m := New(3, 4)
 	m.Lines = len(Paylines)
 	bet, won, paid, frees, links := 0, 0, 0, 0, 0
-	played := 0 // spins of either kind
+	played := 0 // paid spins and free games together
 	for paid < spins {
 		m.Credits = StartCredits
 		r, _ := m.Spin()
@@ -320,17 +344,21 @@ func TestSpinReturn(t *testing.T) {
 	want := ReturnAt(m.TotalBet())
 	got := float64(won) / float64(bet)
 	freeOdds := float64(frees) / spins
-	linkOdds := float64(links) / float64(played)
-	t.Logf("paid back %.2f%% over %d spins of %d lines; free spins 1 in %.1f, link feature 1 in %.1f",
-		got*100, spins, m.Lines, 1/freeOdds, 1/linkOdds)
+	linkOdds := float64(links) / spins
+	freePlayed := float64(played-paid) / spins
+	t.Logf("paid back %.2f%% over %d spins of %d lines; free games won 1 in %.1f, %.4f played per spin; link feature 1 in %.1f",
+		got*100, spins, m.Lines, 1/freeOdds, freePlayed, 1/linkOdds)
 	if w := want.Lines + want.Dice + want.Link; math.Abs(got-w) > 0.015 {
 		t.Errorf("paid back %v, want about %v", got, w)
 	}
 	if w := FreeSpinOdds(); math.Abs(freeOdds-w) > w/20 {
-		t.Errorf("free spins on %v of spins, want about %v", freeOdds, w)
+		t.Errorf("free games won on %v of spins, want about %v", freeOdds, w)
+	}
+	if w := freeGames(); math.Abs(freePlayed-w) > w/20 {
+		t.Errorf("%v free games played per spin, want about %v", freePlayed, w)
 	}
 	if w := LinkOdds(); math.Abs(linkOdds-w) > w/20 {
-		t.Errorf("link feature on %v of spins, want about %v", linkOdds, w)
+		t.Errorf("%v link features per spin, want about %v", linkOdds, w)
 	}
 }
 

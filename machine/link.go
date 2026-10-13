@@ -54,11 +54,31 @@ var TopChipBets = chipBets[len(chipBets)-1].bets
 // MaxBet is the largest total bet that can be played.
 var MaxBet = LineChoices[len(LineChoices)-1] * BetChoices[len(BetChoices)-1]
 
+// chipList is a set of chip values, in total bets, and how often each is
+// dealt relative to the others.
+type chipList []struct{ bets, weight int }
+
+// worth is the average value of a chip from the list, in total bets.
+func (l chipList) worth() float64 {
+	weight, worth := 0, 0
+	for _, c := range l {
+		weight += c.weight
+		worth += c.weight * c.bets
+	}
+	return float64(worth) / float64(weight)
+}
+
 // chipBets are the ordinary chip values, in total bets, and how often each
 // is dealt relative to the others.
-var chipBets = []struct{ bets, weight int }{
+var chipBets = chipList{
 	{1, 500}, {2, 230}, {3, 110}, {4, 60}, {5, 50},
 	{10, 30}, {15, 10}, {20, 6}, {50, 3}, {100, 1},
+}
+
+// bigChipBets are the values a giant chip can carry.
+var bigChipBets = chipList{
+	{5, 480}, {10, 270}, {15, 110}, {20, 60}, {25, 30}, {30, 18},
+	{40, 12}, {50, 9}, {60, 5}, {80, 4}, {100, 2},
 }
 
 // The chance that a chip is dealt as each jackpot. The major pot pays the
@@ -95,9 +115,10 @@ func betShare(bet int) float64 {
 	return float64(bet) / float64(MaxBet)
 }
 
-// dealChip picks what a newly landed chip carries. A feature holds at most
+// dealChip picks what a newly landed chip carries: a jackpot, or a value
+// from the list. A feature holds at most
 // one major chip.
-func (m *Machine) dealChip(bet int, major bool) Chip {
+func (m *Machine) dealChip(bet int, major bool, list chipList) Chip {
 	if major && m.rng.Float64() < majorOdds*betShare(bet) {
 		return Chip{Jackpot: Major}
 	}
@@ -108,11 +129,11 @@ func (m *Machine) dealChip(bet int, major bool) Chip {
 		return Chip{Jackpot: Mini}
 	}
 	total := 0
-	for _, c := range chipBets {
+	for _, c := range list {
 		total += c.weight
 	}
 	n := m.rng.IntN(total)
-	for _, c := range chipBets {
+	for _, c := range list {
 		if n -= c.weight; n < 0 {
 			return Chip{Bets: c.bets}
 		}
@@ -143,6 +164,10 @@ type Feature struct {
 	Held    [Reels][Rows]bool
 	Chips   [Reels][Rows]Chip // what each held cell carries
 	Respins int               // respins left
+
+	// Big is set when a giant chip started the feature. Its nine cells
+	// are held as one chip, whose prize is kept on the middle cell.
+	Big bool `json:",omitempty"`
 }
 
 // Count is the number of chips held.
@@ -225,7 +250,7 @@ func (m *Machine) Respin() (Respin, bool) {
 	for _, cell := range landed {
 		i, row := cell[0], cell[1]
 		l.Held[i][row] = true
-		l.Chips[i][row] = m.dealChip(l.Bet, !l.hasMajor())
+		l.Chips[i][row] = m.dealChip(l.Bet, !l.hasMajor(), chipBets)
 		r.New[i][row] = true
 	}
 

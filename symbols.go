@@ -90,7 +90,7 @@ func drawSymbol(dst *ebiten.Image, sym machine.Symbol, cx, cy, scale float64) {
 	case machine.Scatter:
 		drawDie(dst, x(-17), y(-10), 19*s, -0.22, 5)
 		drawDie(dst, x(17), y(2), 19*s, 0.18, 3)
-		drawText(dst, "FREE SPINS", x(0), y(36), 12*s, yellow, alignCenter, alignCenter)
+		drawText(dst, "FREE GAMES", x(0), y(36), 12*s, yellow, alignCenter, alignCenter)
 
 	case machine.Link:
 		drawChip(dst, cx, cy, scale, "")
