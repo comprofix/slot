@@ -2,7 +2,13 @@
 
 A five-reel slot machine in Go, using [Ebitengine](https://ebitengine.org/).
 It is a rewrite of `SLOT.PAS`, a Turbo Pascal program, which is kept here
-for reference.
+for reference. It plays in the style of modern hold-and-respin poker
+machines.
+
+This is a hobby project. It is played with pretend credits only: no real
+money goes in or comes out, and the dollar amounts on screen are part of the
+pretence. It is not affiliated with or endorsed by any maker of gaming
+machines.
 
 ## Build and run
 
@@ -179,9 +185,9 @@ credits the machine pays back about 92% of what is bet over the long run:
 
 Free games are won about once in 68 spins, and about seven are played each
 time. The link feature comes up about once in 82 spins, counting those a
-giant chip starts. The return is the same at every bet apart from the GRAND, which
-lifts it to about 94% at the smallest bet. Run the tests to recalculate
-all of this after changing the rules:
+giant chip starts. The return is the same at every bet apart from the
+GRAND, which lifts it to about 94% at the smallest bet. Run the tests to
+recalculate all of this after changing the rules:
 
 ```
 go test -v ./machine/
@@ -190,3 +196,7 @@ go test -v ./machine/
 Every spin is drawn from a cryptographic random number generator seeded by
 the operating system, and seeded afresh every hundred spins. No spin depends
 on the ones before it.
+
+## Licence
+
+Released under the MIT licence. See `LICENSE`.
