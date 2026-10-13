@@ -45,7 +45,7 @@ func TestLinkEnd(t *testing.T) {
 					full++
 				}
 			}
-			wantChips, wantFull := linkEnd(start, LinkRespins, betShare(bet), map[[2]int][2]float64{})
+			wantChips, wantFull := linkEnd(start, LinkRespins, grandChance(bet), map[[2]int][2]float64{})
 			gotChips, gotFull := float64(chips)/features, float64(full)/features
 			if math.Abs(gotChips-wantChips) > 0.03 {
 				t.Errorf("from %d chips at bet %d: ended with %.3f on average, want %.3f", start, bet, gotChips, wantChips)
@@ -149,4 +149,24 @@ func TestMajorOdds(t *testing.T) {
 			t.Fatal("dealt a second major chip to a feature")
 		}
 	}
+}
+
+// The two pots must stay within reach at every bet that can be played: at
+// least once in a hundred million spins.
+func TestRarestPrizes(t *testing.T) {
+	const rarest = 1e-8
+	for _, lines := range LineChoices {
+		for _, perLine := range BetChoices {
+			bet := lines * perLine
+			r := ReturnAt(bet)
+			grand := r.Grand * float64(bet) / GrandStart
+			major := r.Major * float64(bet) / MajorStart
+			if grand < rarest || major < rarest {
+				t.Errorf("at a bet of %d the grand is won 1 spin in %.0f and the major 1 in %.0f", bet, 1/grand, 1/major)
+			}
+		}
+	}
+	small, large := ReturnAt(1), ReturnAt(MaxBet)
+	t.Logf("grand 1 spin in %.0f at a bet of 1 and 1 in %.0f at %d",
+		GrandStart/small.Grand, GrandStart/(large.Grand*float64(MaxBet)), MaxBet)
 }

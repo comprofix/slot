@@ -4,6 +4,8 @@
 package machine
 
 import (
+	crand "crypto/rand"
+	"encoding/binary"
 	"math/rand/v2"
 )
 
@@ -255,19 +257,66 @@ type Machine struct {
 	Stops      [Reels]int
 
 	majorPot, grandPot int // in thousandths of a credit
-	rng                *rand.Rand
+
+	// Every chance in the game is drawn from rng, which reads from src.
+	// reseedIn counts the spins until src is seeded afresh; it stays at
+	// zero for a machine made with fixed seeds, which is never reseeded.
+	src      *rand.ChaCha8
+	rng      *rand.Rand
+	reseedIn int
 }
+
+// reseedEvery is how many spins a machine made by NewRandom plays between
+// fresh seeds.
+const reseedEvery = 100
 
 // New returns a machine with the starting credits. The seeds fix the
 // sequence of spins, which the tests rely on.
 func New(seed1, seed2 uint64) *Machine {
+	var seed [32]byte
+	binary.LittleEndian.PutUint64(seed[:], seed1)
+	binary.LittleEndian.PutUint64(seed[8:], seed2)
+	return newMachine(seed)
+}
+
+// NewRandom returns a machine for play: one whose spins cannot be
+// predicted. Its generator is a cryptographic one, seeded by the operating
+// system and seeded afresh as play goes on.
+func NewRandom() *Machine {
+	m := newMachine(freshSeed())
+	m.reseedIn = reseedEvery
+	return m
+}
+
+func newMachine(seed [32]byte) *Machine {
+	src := rand.NewChaCha8(seed)
 	return &Machine{
 		Credits:    StartCredits,
 		Lines:      1,
 		BetPerLine: 1,
 		majorPot:   MajorStart * potUnit,
 		grandPot:   GrandStart * potUnit,
-		rng:        rand.New(rand.NewPCG(seed1, seed2)),
+		src:        src,
+		rng:        rand.New(src),
+	}
+}
+
+// freshSeed asks the operating system for a seed.
+func freshSeed() [32]byte {
+	var seed [32]byte
+	crand.Read(seed[:]) // never fails: the program stops if it cannot be read
+	return seed
+}
+
+// stir counts a spin towards the next fresh seed, and takes one when it is
+// due.
+func (m *Machine) stir() {
+	if m.reseedIn == 0 {
+		return
+	}
+	if m.reseedIn--; m.reseedIn == 0 {
+		m.src.Seed(freshSeed())
+		m.reseedIn = reseedEvery
 	}
 }
 
@@ -288,6 +337,7 @@ func (m *Machine) Spin() (Result, bool) {
 	if m.Link != nil {
 		return Result{}, false
 	}
+	m.stir()
 	var r Result
 	bet := m.TotalBet()
 	multiplier := 1

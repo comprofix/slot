@@ -94,8 +94,8 @@ func LinkOdds() float64 {
 
 // linkEnd works out how a link feature ends from a given position: the
 // number of chips it finishes with on average, and the chance it fills the
-// grid. share is the bet as a fraction of the largest bet.
-func linkEnd(filled, respins int, share float64, memo map[[2]int][2]float64) (chips, full float64) {
+// grid. grand is the chance that a chip completing the grid is let land.
+func linkEnd(filled, respins int, grand float64, memo map[[2]int][2]float64) (chips, full float64) {
 	if filled == Cells {
 		return Cells, 1
 	}
@@ -108,14 +108,14 @@ func linkEnd(filled, respins int, share float64, memo map[[2]int][2]float64) (ch
 	}
 
 	empty := Cells - filled
-	odds := respinOdds(filled)
+	odds := respinOdds
 	// after adds in what follows when n chips land, weighted by chance p.
 	after := func(n int, p float64) {
 		var c, f float64
 		if n == 0 {
-			c, f = linkEnd(filled, respins-1, share, memo)
+			c, f = linkEnd(filled, respins-1, grand, memo)
 		} else {
-			c, f = linkEnd(filled+n, LinkRespins, share, memo)
+			c, f = linkEnd(filled+n, LinkRespins, grand, memo)
 		}
 		chips += p * c
 		full += p * f
@@ -124,8 +124,8 @@ func linkEnd(filled, respins int, share float64, memo map[[2]int][2]float64) (ch
 		p := binomial(empty, n, odds)
 		if n == empty {
 			// The chip that would complete the grid may be held back.
-			after(n, p*share)
-			after(n-1, p*(1-share))
+			after(n, p*grand)
+			after(n-1, p*(1-grand))
 			continue
 		}
 		after(n, p)
@@ -190,8 +190,8 @@ func ReturnAt(bet int) Returns {
 		weight += c.weight
 		worth += c.weight * c.bets
 	}
-	share := betShare(bet)
-	major := majorOdds * share
+
+	major := majorOdds * betShare(bet)
 	chip := (1 - major) * (miniOdds*MiniBets + minorOdds*MinorBets +
 		(1-miniOdds-minorOdds)*float64(worth)/float64(weight))
 
@@ -200,7 +200,7 @@ func ReturnAt(bet int) Returns {
 		if k < LinkTrigger {
 			continue
 		}
-		chips, full := linkEnd(k, LinkRespins, share, memo)
+		chips, full := linkEnd(k, LinkRespins, grandChance(bet), memo)
 		r.Link += p * spins * chips * chip
 		r.Major += p * spins * chips * major * MajorStart / float64(bet)
 		r.Grand += p * spins * full * GrandStart / float64(bet)

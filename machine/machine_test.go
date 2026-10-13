@@ -364,3 +364,47 @@ func TestInsertCoin(t *testing.T) {
 		t.Error("Spin refused after inserting coins")
 	}
 }
+
+// Fixed seeds repeat the same spins and are left alone; a machine made for
+// play differs from every other and is seeded afresh as it goes.
+func TestGenerators(t *testing.T) {
+	a, b := New(1, 2), New(1, 2)
+	for range 500 {
+		ra, _ := a.Spin()
+		rb, _ := b.Spin()
+		if ra.Stops != rb.Stops {
+			t.Fatal("two machines with the same seeds spun differently")
+		}
+		for a.Link != nil {
+			a.Respin()
+			b.Respin()
+		}
+		a.Credits, b.Credits = StartCredits, StartCredits
+	}
+	if a.reseedIn != 0 {
+		t.Error("a machine with fixed seeds is set to take a fresh one")
+	}
+
+	c, d := NewRandom(), NewRandom()
+	same := true
+	for n := range 3 * reseedEvery {
+		rc, _ := c.Spin()
+		rd, _ := d.Spin()
+		if rc.Stops != rd.Stops {
+			same = false
+		}
+		for c.Link != nil {
+			c.Respin()
+		}
+		for d.Link != nil {
+			d.Respin()
+		}
+		c.Credits, d.Credits = StartCredits, StartCredits
+		if want := reseedEvery - (n+1)%reseedEvery; c.reseedIn != want {
+			t.Fatalf("after %d spins a fresh seed is due in %d, want %d", n+1, c.reseedIn, want)
+		}
+	}
+	if same {
+		t.Error("two machines made for play spun the same")
+	}
+}

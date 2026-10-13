@@ -93,8 +93,8 @@ shows what it carries. Six or more anywhere lock in place and start the
 link feature:
 
 1. Everything else clears and you get three respins.
-2. On each respin any empty position may land a chip, which locks too and
-   puts the respins back to three.
+2. On each respin every empty position has the same chance of landing a
+   chip, which locks too and puts the respins back to three.
 3. When the respins run out, or all fifteen positions are full, every chip
    is paid.
 
@@ -115,7 +115,8 @@ start at $5,000 and $20,000 and grow with every paid spin, by 1% and 0.5%
 of the bet; they pay the same whatever the bet, and go back to their
 starting amounts when won. To keep small bets from having the same shot at
 them as large ones, a MAJOR chip and the chip that would complete the grid
-both land more often the more you bet.
+both land more often the more you bet. Even at the smallest bet the GRAND
+comes up at least once in a hundred million spins.
 
 ### Saved game
 
@@ -154,9 +155,13 @@ credits the machine pays back about 92% of what is bet over the long run:
 
 Free spins come up about once in 68 spins and the link feature about once
 in 105. The return is the same at every bet apart from the GRAND, which
-lifts it to about 93% at the smallest bet. Run the tests to recalculate
+lifts it to about 94% at the smallest bet. Run the tests to recalculate
 all of this after changing the rules:
 
 ```
 go test -v ./machine/
 ```
+
+Every spin is drawn from a cryptographic random number generator seeded by
+the operating system, and seeded afresh every hundred spins. No spin depends
+on the ones before it.

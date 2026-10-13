@@ -1,7 +1,5 @@
 package machine
 
-import "math"
-
 // The link feature. Six or more chips anywhere on the reels lock in place
 // and the rest of the grid respins. Each respin every empty cell may land a
 // new chip, which locks too and puts the respins back to three. When the
@@ -50,6 +48,9 @@ const (
 	grandGrowth = 5
 )
 
+// TopChipBets is the most an ordinary chip can carry, in total bets.
+var TopChipBets = chipBets[len(chipBets)-1].bets
+
 // MaxBet is the largest total bet that can be played.
 var MaxBet = LineChoices[len(LineChoices)-1] * BetChoices[len(BetChoices)-1]
 
@@ -69,14 +70,23 @@ const (
 	majorOdds = 0.0004
 )
 
-// respinBase sets how likely an empty cell is to land a chip on a respin.
-// The chance falls as the grid fills; see respinOdds.
-const respinBase = 0.05
+// respinOdds is the chance that an empty cell lands a chip on a respin. It
+// is the same for every cell and every respin of the feature.
+const respinOdds = 0.0455
 
-// respinOdds is the chance that each empty cell lands a chip on a respin
-// when filled cells already hold chips.
-func respinOdds(filled int) float64 {
-	return respinBase * math.Sqrt(float64(Cells-filled)/float64(Cells-LinkTrigger))
+// The grand pot pays the same whatever the bet, so the chip that would
+// complete the grid is let land only some of the time, in proportion to
+// the bet: grandOdds is that chance at MaxBet. It never falls below
+// grandFloor, which keeps the grand within reach at the smallest bets.
+const (
+	grandOdds  = 0.1
+	grandFloor = 0.0005
+)
+
+// grandChance is the chance that a chip which would complete the grid is
+// let land, at the given total bet.
+func grandChance(bet int) float64 {
+	return max(grandOdds*betShare(bet), grandFloor)
 }
 
 // betShare is the bet as a fraction of the largest bet. The chances of the
@@ -198,18 +208,18 @@ func (m *Machine) Respin() (Respin, bool) {
 	var r Respin
 
 	filled := l.Count()
-	odds := respinOdds(filled)
+
 	var landed [][2]int
 	for i := range Reels {
 		for row := range Rows {
-			if !l.Held[i][row] && m.rng.Float64() < odds {
+			if !l.Held[i][row] && m.rng.Float64() < respinOdds {
 				landed = append(landed, [2]int{i, row})
 			}
 		}
 	}
-	// The grand pot pays the same whatever the bet, so the chip that would
-	// complete the grid lands less often at smaller bets.
-	if n := len(landed); n > 0 && filled+n == Cells && m.rng.Float64() >= betShare(l.Bet) {
+	// The chip that would complete the grid is let land only some of the time;
+	// see grandChance.
+	if n := len(landed); n > 0 && filled+n == Cells && m.rng.Float64() >= grandChance(l.Bet) {
 		landed = landed[:n-1]
 	}
 	for _, cell := range landed {

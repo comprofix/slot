@@ -8,7 +8,6 @@ import (
 	"image/color"
 	"log"
 	"math"
-	"math/rand/v2"
 	"slices"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -105,7 +104,7 @@ type freeSpins struct {
 
 func newGame() *Game {
 	g := &Game{snd: newSounds(), rtp: machine.RTP(len(machine.Paylines))}
-	g.m = machine.New(rand.Uint64(), rand.Uint64())
+	g.m = machine.NewRandom()
 	g.message = "CHOOSE YOUR BET AND PRESS SPIN"
 
 	// Pick up the saved game, if there is one. A game with no folder to be
@@ -556,8 +555,9 @@ func (g *Game) drawMenu(screen *ebiten.Image) {
 }
 
 func (g *Game) drawHelp(screen *ebiten.Image) {
-	drawText(screen, "HOW TO PLAY", screenW/2, 34, 36, yellow, alignCenter, alignStart)
+	drawText(screen, "HOW TO PLAY", screenW/2, 30, 34, yellow, alignCenter, alignStart)
 
+	top := machine.BetChoices[len(machine.BetChoices)-1]
 	lines := []string{
 		"Choose a bet per line and how many lines to play, then spin.",
 		"A spin costs the bet per line times the number of lines.",
@@ -567,10 +567,15 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		"A win on a line is multiplied by the bet per line.",
 		"The joker is wild on reels 2 to 5 and doubles any win it helps make.",
 		"Three or more dice anywhere win free spins, with all wins doubled.",
-		"Six or more chips lock in place and respin for the jackpots.",
+		fmt.Sprintf("%d or more chips lock in place and respin. Each chip pays 1 to", machine.LinkTrigger),
+		fmt.Sprintf("%d times the total bet, or MINI (x%d), MINOR (x%d) or the MAJOR.",
+			machine.TopChipBets, machine.MiniBets, machine.MinorBets),
+		fmt.Sprintf("Fill all %d places to win the GRAND as well.", machine.Cells),
+		"The MAJOR and GRAND pay the same at any bet, so they are won more",
+		fmt.Sprintf("often the more you bet: most often at %d a line on %d lines.", top, len(machine.Paylines)),
 	}
 	for i, l := range lines {
-		drawText(screen, l, screenW/2-280, 86+float64(i)*24, 16, white, alignStart, alignStart)
+		drawText(screen, l, screenW/2-280, 76+float64(i)*20, 15, white, alignStart, alignStart)
 	}
 
 	keys := [][2]string{
@@ -585,12 +590,12 @@ func (g *Game) drawHelp(screen *ebiten.Image) {
 		{"ESC", "back to the menu"},
 	}
 	for i, k := range keys {
-		y := 300 + float64(i)*22
-		drawText(screen, k[0], screenW/2-70, y, 17, lightRed, alignEnd, alignStart)
-		drawText(screen, k[1], screenW/2-45, y, 17, white, alignStart, alignStart)
+		y := 346 + float64(i)*20
+		drawText(screen, k[0], screenW/2-70, y, 15, lightRed, alignEnd, alignStart)
+		drawText(screen, k[1], screenW/2-45, y, 15, white, alignStart, alignStart)
 	}
-	drawText(screen, "The buttons on screen can be clicked with the mouse.", screenW/2, 490, 15, lightGray, alignCenter, alignStart)
-	drawText(screen, "PRESS ENTER TO RETURN", screenW/2, 530, 20, lightBlue, alignCenter, alignStart)
+	drawText(screen, "The buttons on screen can be clicked with the mouse.", screenW/2, 530, 14, lightGray, alignCenter, alignStart)
+	drawText(screen, "PRESS ENTER TO RETURN", screenW/2, 552, 20, lightBlue, alignCenter, alignStart)
 }
 
 func (g *Game) drawAbout(screen *ebiten.Image) {
